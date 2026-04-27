@@ -295,3 +295,5 @@ CREATE INDEX idx_speech_segments_conversation ON speech_segments(conversation_id
 ```
 
 <!-- Activity: simulated update on 2026-03-13 -->
+
+<!-- Activity: simulated update on 2026-04-27 -->
