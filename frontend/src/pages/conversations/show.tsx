@@ -326,3 +326,5 @@ export const ConversationShow: React.FC = () => {
     </div>
   );
 };
+
+// Activity: simulated update on 2026-05-25
