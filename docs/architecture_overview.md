@@ -137,3 +137,5 @@ After the Scoring Engine completes:
 2.  **SSE/WebSocket Notification:** The backend publishes a `conversation_processed` message to a Redis Pub/Sub channel. The UI listens to this event to update the list, dashboard counters, and detail pages in real-time.
 
 <!-- Activity: simulated update on 2026-03-24 -->
+
+<!-- Activity: simulated update on 2026-07-03 -->
