@@ -178,15 +178,3 @@ export const SettingsList: React.FC = () => {
     </div>
   );
 };
-
-// Activity: simulated update on 2026-04-02
-
-// Activity: simulated update on 2026-04-21
-
-// Activity: simulated update on 2026-04-23
-
-// Activity: simulated update on 2026-05-29
-
-// Activity: simulated update on 2026-06-04
-
-// Activity: simulated update on 2026-06-18

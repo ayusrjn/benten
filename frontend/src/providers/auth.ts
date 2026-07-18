@@ -56,5 +56,3 @@ export const authProvider: AuthProvider = {
     return { error };
   },
 };
-
-// Activity: simulated update on 2026-04-27

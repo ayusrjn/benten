@@ -10,7 +10,3 @@ export const Login = () => {
     />
   );
 };
-
-// Activity: simulated update on 2026-03-13
-
-// Activity: simulated update on 2026-04-22

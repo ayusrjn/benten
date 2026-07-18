@@ -123,15 +123,3 @@ export const OrganizationList: React.FC = () => {
     </div>
   );
 };
-
-// Activity: simulated update on 2026-04-09
-
-// Activity: simulated update on 2026-04-23
-
-// Activity: simulated update on 2026-04-30
-
-// Activity: simulated update on 2026-06-04
-
-// Activity: simulated update on 2026-07-03
-
-// Activity: simulated update on 2026-07-08

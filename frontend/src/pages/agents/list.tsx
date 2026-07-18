@@ -132,5 +132,3 @@ export const AgentList: React.FC = () => {
     </div>
   );
 };
-
-// Activity: simulated update on 2026-06-03

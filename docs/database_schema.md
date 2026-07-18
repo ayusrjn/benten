@@ -293,11 +293,3 @@ CREATE INDEX idx_conversations_raw_metrics ON conversations USING gin (raw_metri
 -- Timeline search and playback alignment for speech segments
 CREATE INDEX idx_speech_segments_conversation ON speech_segments(conversation_id, start_sec ASC);
 ```
-
-<!-- Activity: simulated update on 2026-03-13 -->
-
-<!-- Activity: simulated update on 2026-04-27 -->
-
-<!-- Activity: simulated update on 2026-05-06 -->
-
-<!-- Activity: simulated update on 2026-06-29 -->
