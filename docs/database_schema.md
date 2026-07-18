@@ -168,19 +168,7 @@ CREATE TABLE agents (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-```Organization
-
-↓
-
-Project
-
-↓
-
-Conversation
-
-Everything belongs to a Project.
-
-Never directly to an Organization.
+```
 
 ### conversations
 ```sql
