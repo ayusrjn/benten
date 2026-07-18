@@ -40,7 +40,7 @@ Diarization segments the speech timeline by speaker ID.
 ### A. Turn Latency
 Turn Latency measures the response delay between the user finishing a sentence and the agent initiating a reply.
 
-$$\text{Latency} = t_{\text{agent\_speech\_start}} - t_{\text{user\_speech\_end}}$$
+$$\text{Latency} = t_{\text{agent-speech-start}} - t_{\text{user-speech-end}}$$
 
 #### Sub-Component Latency Breakdown
 For voice providers that supply event logs (STT, LLM, TTS), total latency is decomposed:
@@ -55,26 +55,26 @@ $$\text{Latency}_{\text{Total}} = \text{Latency}_{\text{STT}} + \text{Latency}_{
 ### B. Dead Air (Silence Ratio)
 Dead Air is defined as any period during a conversation where neither the Agent nor the User is speaking for a duration greater than **1.5 seconds**.
 
-$$\text{Dead Air \%} = \left( \frac{\sum d_{\text{silence\_gap} > 1.5\text{s}}}{\text{Total Call Duration}} \right) \times 100$$
+$$\text{Dead Air \%} = \left( \frac{\sum d_{\text{silence-gap} > 1.5\text{s}}}{\text{Total Call Duration}} \right) \times 100$$
 
-*Where $d_{\text{silence\_gap}}$ is the duration of an inactive VAD segment.*
+*Where $d_{\text{silence-gap}}$ is the duration of an inactive VAD segment.*
 
 ### C. Interruptions (Overlaps & Barge-ins)
 An interruption is detected when both the Agent and the User speak simultaneously. This is represented by overlapping time blocks in their respective diarization tracks.
 
-$$\text{Overlap} \iff t_{\text{user\_start}} < t_{\text{agent\_end}} \quad \text{and} \quad t_{\text{agent\_start}} < t_{\text{user\_end}}$$
+$$\text{Overlap} \iff t_{\text{user-start}} < t_{\text{agent-end}} \quad \text{and} \quad t_{\text{agent-start}} < t_{\text{user-end}}$$
 
 #### Interruption Classifications
 *   **Barge-in (Agent Back-off):** The user starts speaking while the agent is speaking, and the agent ceases speech within **800ms**.
 *   **Double-Talk (Clash):** Both speakers continue talking concurrently for more than **1.0 second**.
 
-$$\text{Barge-in} \iff \text{Overlap} \land d_{\text{overlap\_agent}} \le 800\text{ms}$$
-$$\text{Double-Talk} \iff \text{Overlap} \land d_{\text{overlap\_both}} > 1000\text{ms}$$
+$$\text{Barge-in} \iff \text{Overlap} \land d_{\text{overlap-agent}} \le 800\text{ms}$$
+$$\text{Double-Talk} \iff \text{Overlap} \land d_{\text{overlap-both}} > 1000\text{ms}$$
 
 ### D. Speaking Rate
 Speaking rate is computed per individual speech turn.
 
-$$\text{WPM} = \frac{\text{Word Count in Segment}}{\left( \frac{t_{\text{segment\_end}} - t_{\text{segment\_start}}}{60} \right)}$$
+$$\text{WPM} = \frac{\text{Word Count in Segment}}{\left( \frac{t_{\text{segment-end}} - t_{\text{segment-start}}}{60} \right)}$$
 
 *   **Optimal Range:** 110 to 150 WPM. Rates $< 90$ WPM indicate lagging, while $> 180$ WPM indicate high urgency or comprehension barriers.
 
