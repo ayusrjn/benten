@@ -7,7 +7,6 @@
 [![Tech Stack](https://img.shields.io/badge/stack-React%20%7C%20Refine%20%7C%20Celery%20%7C%20RabbitMQ-blue.svg)](#)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](#)
 
-<!-- LOGO PLACEHOLDER: Replace src with your hosted logo when available -->
 <img src="https://placehold.co/600x200/1890ff/ffffff?text=BENTEN+AUDIO+EVALUATION" alt="Benten Logo" width="500" style="margin: 20px 0; border-radius: 8px;" />
 
 <p align="center">

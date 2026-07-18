@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: benten-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: benten
+      POSTGRES_USER: benten_admin
+      POSTGRES_PASSWORD: admin_secure_pwd
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: benten-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: benten_mq
+      RABBITMQ_DEFAULT_PASS: mq_secure_pwd
+
+  redis:
+    image: redis:7-alpine
+    container_name: benten-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
