@@ -54,5 +54,8 @@
   },
   "refine": {
     "projectId": "mXN0hU-RELUA4-bKOkIq"
+  },
+  "overrides": {
+    "path-to-regexp": "^8.4.0"
   }
 }
