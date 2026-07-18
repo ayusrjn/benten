@@ -185,7 +185,7 @@ CREATE TABLE conversations (
     speech_rate_wpm INTEGER NOT NULL DEFAULT 0,
     primary_emotion VARCHAR(50), -- e.g., 'Calm', 'Frustrated'
     voice_quality INTEGER NOT NULL CHECK (voice_quality BETWEEN 0 AND 100),
-    audio_url VARCHAR(2048),
+    audio_url VARCHAR(2048), -- URL of the recording hosted by the provider (Benten evaluates but does not store the audio)
     raw_metrics_json JSONB, -- Stores granular data (e.g. STT/TTS latency breakdown)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

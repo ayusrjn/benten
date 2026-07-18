@@ -20,11 +20,10 @@ graph TD
         OAI[OpenAI API]
     end
     
-    CW1 -->|4. Pull Call Metadata & Audio| Connectors
-    CW1 -->|5. Store Raw Audio| MinIO[(MinIO Object Storage)]
-    CW1 -->|6. Register Processing Job| RMQ
+    CW1 -->|4. Pull Call Metadata & Audio URL| Connectors
+    CW1 -->|5. Register Processing Job| RMQ
     
-    RMQ -->|7. Fetch Processing Job| CW2[Celery Analysis Worker]
+    RMQ -->|6. Fetch Processing Job| CW2[Celery Analysis Worker]
     
     subgraph Pipeline [Audio Analysis Pipeline]
         AL[Audio Loader] --> VAD[Voice Activity Detection]
@@ -33,9 +32,9 @@ graph TD
         FE --> Score[Scoring Engine]
     end
     
-    CW2 -->|8. Run Pipeline| Pipeline
-    Score -->|9. Persist Results| DB[(PostgreSQL + TimescaleDB)]
-    Score -->|10. Notify Alert Engine| Alert[Alerting Engine]
+    CW2 -->|7. Fetch Audio from Provider URL & Run Pipeline| Pipeline
+    Score -->|8. Persist Results| DB[(PostgreSQL + TimescaleDB)]
+    Score -->|9. Notify Alert Engine| Alert[Alerting Engine]
 ```
 
 ---
@@ -48,14 +47,14 @@ graph TD
     2.  `audio-analysis`: High-compute tasks executing the multi-step signal processing and machine learning pipelines.
 *   **Celery:** Distributed task queue executor. Workers are horizontally scalable. Ingestion workers are I/O-bound, while Analysis workers are GPU/CPU-bound (often deployed on instances with GPU access for transcription and diarization models).
 
-### B. Storage Layer (MinIO & PostgreSQL)
-*   **MinIO:** S3-compatible object storage repository. It stores raw audio files (usually in `.wav` or `.mp3` format) organized by project and conversation IDs (e.g., `s3://benten-recordings/{project_id}/{conversation_id}.wav`).
+### B. Database & Message Store (PostgreSQL & Redis)
 *   **PostgreSQL + TimescaleDB:** The primary database backend. 
     *   **Entity Hierarchy & Ownership:**
         *   **Organization:** The top-level administrative unit (contains Billing, Members).
         *   **Project:** Belongs to an Organization. *All* functional entities (Agents, Conversations, Alert Rules, Integrations) belong strictly to a Project.
         *   **Conversation:** Belongs directly and exclusively to a Project. There are no direct foreign keys or references between a Conversation and an Organization.
     *   **TimescaleDB:** Houses time-series metrics (turn-by-turn latency, raw jitter/SNR measurements, and emotion timelines) to ensure high-performance analytics.
+*   **Redis:** Acts as the backend results storage, pub/sub notification channel, and temporary memory cache.
 
 ---
 
@@ -64,34 +63,34 @@ graph TD
 The Analysis Pipeline processes the ingested audio sequentially to extract key performance metrics.
 
 ```
-       Audio File (MinIO)
-               │
-               ▼
-      [ 1. Audio Loader ]
-               │ (Resample, Mono/Stereo Normalization)
-               ▼
-   [ 2. Voice Activity Detection ]
-               │ (Detect speech timestamps vs. silence)
-               ▼
-     [ 3. Speaker Diarization ]
-               │ (Label segments: User vs. Agent)
-               ▼
-     [ 4. Feature Extraction ]
-               ├── Prosody (Pitch, Intensity, Rhythm)
-               ├── Emotion (Sentiment, Emotional markers)
-               ├── Voice Quality (SNR, Jitter, MOS)
-               ├── Speaking Rate (Words Per Minute)
-               └── Silence (Dead Air)
-               │
-               ▼
-      [ 5. Scoring Engine ]
-               │ (Synthesize final health score & detect issues)
-               ▼
-      [ 6. Save to Dashboard ]
+      Audio URL (Provider API)
+                 │
+                 ▼
+        [ 1. Audio Loader ]
+                 │ (Resample, Mono/Stereo Normalization)
+                 ▼
+     [ 2. Voice Activity Detection ]
+                 │ (Detect speech timestamps vs. silence)
+                 ▼
+       [ 3. Speaker Diarization ]
+                 │ (Label segments: User vs. Agent)
+                 ▼
+       [ 4. Feature Extraction ]
+                 ├── Prosody (Pitch, Intensity, Rhythm)
+                 ├── Emotion (Sentiment, Emotional markers)
+                 ├── Voice Quality (SNR, Jitter, MOS)
+                 ├── Speaking Rate (Words Per Minute)
+                 └── Silence (Dead Air)
+                 │
+                 ▼
+        [ 5. Scoring Engine ]
+                 │ (Synthesize final health score & detect issues)
+                 ▼
+        [ 6. Save to Dashboard ]
 ```
 
 ### 1. Audio Loader
-*   **Input:** Raw audio binary from MinIO.
+*   **Input:** Raw audio binary streamed/downloaded from the provider's hosting URL into memory.
 *   **Operations:** 
     *   Decodes the audio file format (WAV, MP3, M4A, etc.) to raw PCM.
     *   Resamples audio to a uniform sample rate (typically **16kHz, 16-bit mono** or **dual-channel stereo** depending on whether the provider outputs split-channel audio).

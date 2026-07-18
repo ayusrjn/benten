@@ -22,7 +22,7 @@ Benten is a specialized **Voice AI Agents Audio Evaluation Framework**. Unlike t
 
 ##  Key Features
 
-*    **Batch Connector Ingestion**: Imports call recordings from voice AI providers (Vapi, Retell, OpenAI Realtime, ElevenLabs) using an asynchronous queue (RabbitMQ + Celery) and archives them in S3-compatible storage (MinIO).
+*    **Batch Connector Ingestion**: Imports call data from voice AI providers (Vapi, Retell, OpenAI Realtime, ElevenLabs) using an asynchronous queue (RabbitMQ + Celery), streaming/evaluating audio streams directly from the provider's hosting API without local persistence.
 *    **Sequential Audio Pipeline**:
     1.  **Audio Loader**: Standardizes codecs, loudness levels, and sample rates.
     2.  **Voice Activity Detection (VAD)**: Pinpoints speech frames vs. silences.
@@ -48,7 +48,7 @@ Detailed blueprints and architectural guides are available in the [docs/](file:/
 *   **Frontend**: React, [Refine Dev Framework](https://refine.dev/), Ant Design, React Router.
 *   **Message Broker**: RabbitMQ.
 *   **Task Queue**: Celery (Python-based worker pools).
-*   **Object Storage**: MinIO (S3-compatible).
+*   **Cache & PubSub**: Redis.
 *   **Database**: PostgreSQL + TimescaleDB (for relational metadata and time-series metrics partitioning).
 
 ---

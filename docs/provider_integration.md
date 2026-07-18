@@ -49,10 +49,9 @@ class BaseConnector(ABC):
 1.  **UI Import Trigger:** User enters a `call_id` and hits "Import".
 2.  **Celery Job Registry:** The API Gateway registers an `audio_ingest` task to RabbitMQ.
 3.  **Authentication Fetch:** Celery loads the encrypted `api_key` and `config` from the `integrations` table.
-4.  **Download & Archive:** 
-    *   The connector class contacts the provider, fetches metadata, and downloads the audio binary.
-    *   The audio is uploaded to MinIO: `s3://benten-recordings/{project_id}/{conversation_id}.wav`.
-5.  **SQL Transaction:** Ingestion saves the base `conversations` metadata and schedules the `audio-analysis` Celery task.
+4.  **Fetch Metadata & URL:** 
+    *   The connector class contacts the provider, fetches call metadata, and retrieves the external `audio_url`.
+5.  **SQL Transaction & Job Chain:** Ingestion saves the base `conversations` entry with the `audio_url` and schedules the `audio-analysis` Celery task to evaluate the audio stream (which is downloaded dynamically and discarded after analysis).
 
 ---
 
