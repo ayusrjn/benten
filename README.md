@@ -50,26 +50,74 @@ Detailed blueprints and architectural guides are available in the [docs/](file:/
 *   **Cache & PubSub**: Redis.
 *   **Database**: PostgreSQL + TimescaleDB (for relational metadata and time-series metrics partitioning).
 
----
-
 ##  Project Structure
 
 ```bash
-├── docs/                # Technical design documents and plans
+├── docker/              # Docker Compose and Postgres initialization configurations
+│   ├── docker-compose.yml
+│   └── postgres-init/
+├── backend/             # Python FastAPI, Celery worker, and ML evaluation pipeline
+│   ├── app/             # Application source code
+│   │   ├── main.py      # FastAPI web application entrypoint
+│   │   ├── config.py    # Environment configuration & validation
+│   │   ├── database.py  # SQLAlchemy session setup
+│   │   ├── api/         # REST API routers
+│   │   ├── models/      # Database models
+│   │   ├── workers/     # Celery tasks and connectors
+│   │   └── pipeline/    # Audio analysis pipeline stubs
+│   ├── requirements.txt # Python dependency file
+│   └── Dockerfile       # Container build setup for Web/Workers
 ├── frontend/            # Refine-based React dashboard app
+├── start_dev.sh         # Local dev environment orchestrator
 └── README.md            # Root repository guide
 ```
 
 ---
 
-##  Getting Started (Frontend)
+##  Getting Started
 
-To run the dashboard development server locally:
+### ⚡ Quick Start (Orchestrated Startup)
+The fastest way to spin up the local development environment (Docker backing services, backend virtual environment, npm package installations, FastAPI server, Celery worker, and frontend dashboard) is to run the orchestration script in the root directory:
 
+```bash
+./start_dev.sh
+```
+*Press `Ctrl+C` in that terminal to gracefully stop all running servers simultaneously.*
+
+### 🛠️ Manual Component Startup
+
+#### 1. Spin up Backing Infrastructure
+Start the database, message broker, and caching servers using Docker Compose:
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
+
+#### 2. Start the Backend API & Workers
+Initialize the Python virtual environment and run the server + worker:
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Copy and configure environment variables
+cp .env.example .env
+
+# Run FastAPI app (with auto-reload)
+uvicorn app.main:app --reload --port 8000
+
+# Run Celery worker (in a separate terminal)
+celery -A app.workers.celery_app worker --loglevel=info
+```
+
+#### 3. Start the Frontend Dashboard
+Install Node dependencies and launch the Vite-based development server:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-The UI dev server will launch at `http://localhost:5173`.
+* The Frontend dashboard will launch at `http://localhost:5173`.
+* The FastAPI backend API docs will be accessible at `http://localhost:8000/docs`.
+* The RabbitMQ Management Console will be at `http://localhost:15672` (User: `benten_mq`, Pass: `mq_secure_pwd`).
