@@ -1,123 +1,158 @@
 <div align="center">
 
-# 🎙️ Benten
-### Voice AI Agents Audio Evaluation Framework
+<img src="./icon.png" alt="Benten Logo" width="120" style="border-radius: 20px; margin-bottom: 16px;" />
 
-[![Status](https://img.shields.io/badge/status-active-success.svg)](#)
-[![Tech Stack](https://img.shields.io/badge/stack-React%20%7C%20Refine%20%7C%20Celery%20%7C%20RabbitMQ-blue.svg)](#)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](#)
+# Benten
 
-<img src="https://placehold.co/600x200/1890ff/ffffff?text=BENTEN+AUDIO+EVALUATION" alt="Benten Logo" width="500" style="margin: 20px 0; border-radius: 8px;" />
+### Voice AI Agents Audio Evaluation Platform
 
 <p align="center">
-  <strong>A premium, multi-tenant analytics dashboard and signal-processing pipeline designed to measure, analyze, and optimize voice AI agent conversation quality.</strong>
+  Benten is an audio evaluation and analytics platform built specifically for Voice AI agents. It connects directly to voice AI platforms to discover your agents, process call audio, and measure conversation quality, response latency, and speech dynamics.
 </p>
 
 ---
 
 </div>
 
-Benten is a specialized **Voice AI Agents Audio Evaluation Framework**. Unlike text-only LLM evaluation platforms, Benten processes the complete acoustic and conversational dynamics of human-to-agent phone calls and voice sessions. It acts as an observation deck, highlighting bottlenecks in pipeline latency (STT $\rightarrow$ LLM $\rightarrow$ TTS), speech clarity, turn overlap, and customer emotion.
+## What is Benten
 
-##  Key Features
+Unlike standard LLM evaluation tools that only analyze text transcripts, Benten evaluates the complete acoustic and conversational performance of human-to-agent voice calls.
 
-*    **Batch Connector Ingestion**: Imports call data from voice AI providers (Vapi, Retell, OpenAI Realtime, ElevenLabs) using an asynchronous queue (RabbitMQ + Celery), streaming/evaluating audio streams directly from the provider's hosting API without local persistence.
-*    **Sequential Audio Pipeline**:
-    1.  **Audio Loader**: Standardizes codecs, loudness levels, and sample rates.
-    2.  **Voice Activity Detection (VAD)**: Pinpoints speech frames vs. silences.
-    3.  **Speaker Diarization**: Clusters audio channels to segregate and attribute speech turns (User vs. Agent).
-    4.  **Feature Extraction**: Calculates Prosody, Emotion timelines, Voice Quality (MOS), Speaking Rate (WPM), and Silence.
-    5.  **Scoring Engine**: Evaluates overall conversation health (0-100) and catalogs issue flags.
-*    **Evaluation Dashboard**: Built with React, Refine, and Ant Design, displaying high-level performance trends, interactive turn timelines, and emotional profiles.
-*    **Alerting & Notification Engine**: Configurable thresholds to route warning and critical incidents to Slack, PagerDuty, or email.
+When a customer speaks with a Voice AI agent, Benten measures key performance metrics:
+- **Turn Latency**: The response delay from user speech input to agent voice output.
+- **Dead Air Percentage**: Unintended silent pauses during the call session.
+- **User Interruptions**: Occurrences where the user speaks over the agent.
+- **Health Score**: A calculated quality score (0 to 100) combining speech metrics and conversation flow.
 
 ---
 
-##  System Design & Documentation
+## Supported Integrations
 
-Detailed blueprints and architectural guides are available in the [docs/](file:///home/ayush-ranjan/Documents/benten/docs) directory:
+Benten integrates directly with leading Voice AI providers. Adding an API key automatically discovers your agents, synchronizes metadata, and prepares them for call evaluation.
 
-*    **[Architecture Overview](file:///home/ayush-ranjan/Documents/benten/docs/architecture_overview.md)**: System topology, Celery analysis pipeline steps, and extraction parameters.
-*    **[Database Schema Design](file:///home/ayush-ranjan/Documents/benten/docs/database_schema.md)**: SQL DDL definitions, indexing strategies, and ERD mapping the hierarchy (`Organization` $\rightarrow$ `Project` $\rightarrow$ `Conversation`).
+<table align="center" style="width: 100%;">
+  <tr>
+    <td align="center" width="33%">
+      <img src="https://img.shields.io/badge/ElevenLabs-7E22CE?style=for-the-badge&logoColor=white" alt="ElevenLabs" style="border-radius: 6px; margin-bottom: 8px;" /><br />
+      <strong>ElevenLabs Conversational AI</strong><br />
+      <sub>Synchronizes agent metadata via Conversational AI APIs and monitors speech synthesis response times.</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="https://img.shields.io/badge/Vapi_AI-0369A1?style=for-the-badge&logoColor=white" alt="Vapi AI" style="border-radius: 6px; margin-bottom: 8px;" /><br />
+      <strong>Vapi AI</strong><br />
+      <sub>Discovers Vapi assistants and monitors end-to-end turn latency and webhook execution delays.</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="https://img.shields.io/badge/Retell_AI-047857?style=for-the-badge&logoColor=white" alt="Retell AI" style="border-radius: 6px; margin-bottom: 8px;" /><br />
+      <strong>Retell AI</strong><br />
+      <sub>Fetches agent profiles and call records, monitoring speech turn overlaps and silence ratios.</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
-##  Technology Stack
+## Key Features
 
-*   **Frontend**: React, [Refine Dev Framework](https://refine.dev/), Ant Design, React Router.
-*   **Message Broker**: RabbitMQ.
-*   **Task Queue**: Celery (Python-based worker pools).
-*   **Cache & PubSub**: Redis.
-*   **Database**: PostgreSQL + TimescaleDB (for relational metadata and time-series metrics partitioning).
+- **Automated Agent Discovery**: Enter API keys in the dashboard to automatically sync agents across ElevenLabs, Vapi, and Retell.
+- **Audio Analysis Pipeline**: Standardizes audio files, detects speech activity with Silero VAD, separates speaker turns with PyAnnote diarization, and measures latency, dead air, and interruptions.
+- **Agents Dashboard**: View all discovered agents in a centralized interface with provider filtering, search, and metric cards.
+- **Detailed Agent Drawer**: Inspect individual agent performance trends, health scores, and raw JSON metadata returned by provider APIs.
+- **Incident Flaw Detection**: Dynamically flags performance issues such as latency spikes, high dead air percentage, and user barge-ins.
+- **Authentication & Multi-Tenancy**: Complete JWT-based authentication system with user registration, login, and project-level data separation.
 
-##  Project Structure
+---
 
-```bash
-├── docker/              # Docker Compose and Postgres initialization configurations
-│   ├── docker-compose.yml
-│   └── postgres-init/
-├── backend/             # Python FastAPI, Celery worker, and ML evaluation pipeline
-│   ├── app/             # Application source code
-│   │   ├── main.py      # FastAPI web application entrypoint
-│   │   ├── config.py    # Environment configuration & validation
-│   │   ├── database.py  # SQLAlchemy session setup
-│   │   ├── api/         # REST API routers
-│   │   ├── models/      # Database models
-│   │   ├── workers/     # Celery tasks and connectors
-│   │   └── pipeline/    # Audio analysis pipeline stubs
-│   ├── requirements.txt # Python dependency file
-│   └── Dockerfile       # Container build setup for Web/Workers
-├── frontend/            # Refine-based React dashboard app
-├── start_dev.sh         # Local dev environment orchestrator
-└── README.md            # Root repository guide
+## System Architecture
+
+Benten uses a modular microservices architecture:
+
+- **Frontend (`frontend-benten`)**: React dashboard built with Refine framework, Ant Design components, and React Router.
+- **Backend API (`backend`)**: FastAPI application providing user auth, integration key storage, agent management, and dashboard APIs.
+- **Task Workers**: Celery workers powered by RabbitMQ for asynchronous audio processing and provider synchronization.
+- **Caching and Messaging**: Redis for real-time pub/sub notifications and task cache.
+- **Database**: PostgreSQL with Alembic database schema migrations.
+
+---
+
+## Project Structure
+
+```
+.
+├── backend/                # FastAPI application, Celery workers, and audio pipeline
+│   ├── app/                # Application source code
+│   │   ├── api/            # API routers (auth, agents, integrations, dashboard)
+│   │   ├── models/         # SQLAlchemy database models
+│   │   ├── workers/        # Celery tasks and provider connectors
+│   │   └── pipeline/       # Audio analysis and feature extraction engine
+│   ├── migrations/         # Alembic database schema migrations
+│   └── requirements.txt    # Python backend dependencies
+├── frontend-benten/        # React + Refine dashboard UI
+│   ├── src/                # Pages (Agents, Integrations, Dashboard, Auth)
+│   └── package.json        # Frontend Node.js dependencies
+├── docker/                 # PostgreSQL, Redis, and RabbitMQ Docker Compose setup
+├── start_dev.sh            # One-command development server script
+└── README.md               # Project documentation
 ```
 
 ---
 
-##  Getting Started
+## Getting Started
 
-### ⚡ Quick Start (Orchestrated Startup)
-The fastest way to spin up the local development environment (Docker backing services, backend virtual environment, npm package installations, FastAPI server, Celery worker, and frontend dashboard) is to run the orchestration script in the root directory:
+### 1. One-Command Setup
+
+Run the orchestrator script to start all backing services, backend API, Celery worker, and frontend dashboard:
 
 ```bash
 ./start_dev.sh
 ```
-*Press `Ctrl+C` in that terminal to gracefully stop all running servers simultaneously.*
 
-### 🛠️ Manual Component Startup
+Press `Ctrl+C` to stop all services simultaneously.
 
-#### 1. Spin up Backing Infrastructure
-Start the database, message broker, and caching servers using Docker Compose:
+---
+
+### 2. Manual Setup
+
+#### Step 1: Start Backing Infrastructure
 ```bash
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-#### 2. Start the Backend API & Workers
-Initialize the Python virtual environment and run the server + worker:
+#### Step 2: Start Backend Server and Celery Worker
 ```bash
 cd backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-
-# Copy and configure environment variables
 cp .env.example .env
 
-# Run FastAPI app (with auto-reload)
+# Run database migrations
+alembic upgrade head
+
+# Start FastAPI web server
 uvicorn app.main:app --reload --port 8000
 
-# Run Celery worker (in a separate terminal)
+# Start Celery worker (in a separate terminal)
 celery -A app.workers.celery_app worker --loglevel=info
 ```
 
-#### 3. Start the Frontend Dashboard
-Install Node dependencies and launch the Vite-based development server:
+#### Step 3: Start Frontend Dashboard
 ```bash
-cd frontend
+cd frontend-benten
 npm install
 npm run dev
 ```
 
-* The Frontend dashboard will launch at `http://localhost:5173`.
-* The FastAPI backend API docs will be accessible at `http://localhost:8000/docs`.
-* The RabbitMQ Management Console will be at `http://localhost:15672` (User: `benten_mq`, Pass: `mq_secure_pwd`).
+---
+
+## Application Endpoints
+
+- **Frontend Dashboard**: http://localhost:5173
+- **Backend API Docs (Swagger)**: http://localhost:8000/docs
+- **RabbitMQ Management Console**: http://localhost:15672 (Username: `benten_mq`, Password: `mq_secure_pwd`)
+
+---
+
+## License
+
+This project is licensed under the MIT License.
