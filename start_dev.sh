@@ -35,7 +35,7 @@ cd ..
 
 # Set up Frontend packages
 echo " 4. Verifying frontend dependencies..."
-cd frontend
+cd frontend-benten
 if [ ! -d node_modules ]; then
     echo "Installing frontend dependencies..."
     npm install
@@ -65,7 +65,7 @@ CELERY_PID=$!
 cd ..
 
 # Start Frontend
-cd frontend
+cd frontend-benten
 npm run dev &
 FRONTEND_PID=$!
 cd ..

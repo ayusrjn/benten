@@ -1,0 +1,212 @@
+/* Hide scrollbar on the sidebar */
+.ant-layout-sider,
+.ant-layout-sider-children,
+.ant-layout-sider .ant-menu {
+  -ms-overflow-style: none !important;  /* IE and Edge */
+  scrollbar-width: none !important;  /* Firefox */
+}
+
+.ant-layout-sider::-webkit-scrollbar,
+.ant-layout-sider-children::-webkit-scrollbar,
+.ant-layout-sider .ant-menu::-webkit-scrollbar {
+  display: none !important;  /* Chrome, Safari, Opera */
+}
+
+/* ==========================================
+   DARK MODE SIDEBAR STYLES
+   ========================================== */
+
+/* Sidebar Container */
+.dark-mode .ant-layout-sider {
+  background-color: #111113 !important;
+}
+
+.dark-mode .ant-layout-sider .ant-layout-sider-children {
+  background-color: #111113 !important;
+}
+
+.dark-mode .ant-layout-sider .ant-menu {
+  background-color: #111113 !important;
+  border-inline-end: none !important;
+}
+
+/* Menu Items (expanded state) */
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item,
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title {
+  height: auto !important;
+  line-height: normal !important;
+  padding: 10px 14px !important;
+  margin: 6px 12px !important;
+  border-radius: 10px !important;
+  background-color: transparent !important;
+  color: #A1A1AA !important;
+  transition: background-color 200ms ease, color 200ms ease, transform 200ms ease, border-color 200ms ease !important;
+  border-left: 3px solid transparent !important;
+}
+
+/* Selected menu item (expanded state) */
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item-selected {
+  background-color: rgba(79, 70, 229, 0.12) !important;
+  color: #FFFFFF !important;
+  font-weight: 500 !important;
+  border-left: 3px solid #4F46E5 !important;
+  transform: translateX(2px) !important;
+}
+
+/* Inactive Icons (expanded state) */
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item .ant-menu-item-icon,
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item .anticon,
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title .ant-menu-item-icon,
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title .anticon {
+  color: #71717A !important;
+  transition: color 200ms ease !important;
+}
+
+/* Selected item icon (expanded state) */
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item-selected .ant-menu-item-icon,
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item-selected .anticon {
+  color: #A5B4FC !important;
+}
+
+/* Hover State (expanded state) */
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item:hover,
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #FFFFFF !important;
+}
+
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item:hover .ant-menu-item-icon,
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item:hover .anticon,
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title:hover .ant-menu-item-icon,
+.dark-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title:hover .anticon {
+  color: #A1A1AA !important;
+}
+
+/* Collapsed State styling */
+.dark-mode .ant-layout-sider-collapsed .ant-menu-item {
+  margin: 6px 8px !important;
+  border-radius: 8px !important;
+  transition: background-color 200ms ease, color 200ms ease !important;
+  color: #A1A1AA !important;
+}
+
+.dark-mode .ant-layout-sider-collapsed .ant-menu-item .ant-menu-item-icon,
+.dark-mode .ant-layout-sider-collapsed .ant-menu-item .anticon {
+  color: #71717A !important;
+  transition: color 200ms ease !important;
+}
+
+.dark-mode .ant-layout-sider-collapsed .ant-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #FFFFFF !important;
+}
+
+.dark-mode .ant-layout-sider-collapsed .ant-menu-item-selected {
+  background-color: rgba(79, 70, 229, 0.12) !important;
+  color: #FFFFFF !important;
+}
+
+.dark-mode .ant-layout-sider-collapsed .ant-menu-item-selected .ant-menu-item-icon,
+.dark-mode .ant-layout-sider-collapsed .ant-menu-item-selected .anticon {
+  color: #A5B4FC !important;
+}
+
+
+/* ==========================================
+   LIGHT MODE SIDEBAR STYLES
+   ========================================== */
+
+/* Sidebar Container */
+.light-mode .ant-layout-sider {
+  background-color: #FFFFFF !important;
+}
+
+.light-mode .ant-layout-sider .ant-layout-sider-children {
+  background-color: #FFFFFF !important;
+}
+
+.light-mode .ant-layout-sider .ant-menu {
+  background-color: #FFFFFF !important;
+  border-inline-end: none !important;
+}
+
+/* Menu Items (expanded state) */
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item,
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title {
+  height: auto !important;
+  line-height: normal !important;
+  padding: 10px 14px !important;
+  margin: 6px 12px !important;
+  border-radius: 10px !important;
+  background-color: transparent !important;
+  color: #4B5563 !important;
+  transition: background-color 200ms ease, color 200ms ease, transform 200ms ease, border-color 200ms ease !important;
+  border-left: 3px solid transparent !important;
+}
+
+/* Selected menu item (expanded state) */
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item-selected {
+  background-color: rgba(79, 70, 229, 0.08) !important;
+  color: #4F46E5 !important;
+  font-weight: 500 !important;
+  border-left: 3px solid #4F46E5 !important;
+  transform: translateX(2px) !important;
+}
+
+/* Inactive Icons (expanded state) */
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item .ant-menu-item-icon,
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item .anticon,
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title .ant-menu-item-icon,
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title .anticon {
+  color: #9CA3AF !important;
+  transition: color 200ms ease !important;
+}
+
+/* Selected item icon (expanded state) */
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item-selected .ant-menu-item-icon,
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item-selected .anticon {
+  color: #4F46E5 !important;
+}
+
+/* Hover State (expanded state) */
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item:hover,
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  color: #111827 !important;
+}
+
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item:hover .ant-menu-item-icon,
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-item:hover .anticon,
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title:hover .ant-menu-item-icon,
+.light-mode .ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title:hover .anticon {
+  color: #4B5563 !important;
+}
+
+/* Collapsed State styling */
+.light-mode .ant-layout-sider-collapsed .ant-menu-item {
+  margin: 6px 8px !important;
+  border-radius: 8px !important;
+  transition: background-color 200ms ease, color 200ms ease !important;
+  color: #4B5563 !important;
+}
+
+.light-mode .ant-layout-sider-collapsed .ant-menu-item .ant-menu-item-icon,
+.light-mode .ant-layout-sider-collapsed .ant-menu-item .anticon {
+  color: #9CA3AF !important;
+  transition: color 200ms ease !important;
+}
+
+.light-mode .ant-layout-sider-collapsed .ant-menu-item:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  color: #111827 !important;
+}
+
+.light-mode .ant-layout-sider-collapsed .ant-menu-item-selected {
+  background-color: rgba(79, 70, 229, 0.08) !important;
+  color: #4F46E5 !important;
+}
+
+.light-mode .ant-layout-sider-collapsed .ant-menu-item-selected .ant-menu-item-icon,
+.light-mode .ant-layout-sider-collapsed .ant-menu-item-selected .anticon {
+  color: #4F46E5 !important;
+}

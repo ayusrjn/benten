@@ -125,3 +125,79 @@ class VapiConnector(BaseConnector):
                 "mocked": True
             }
         }
+
+    def list_agents(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves and normalizes assistants from Vapi.ai API.
+        """
+        if self.api_key == "mock" or self.api_key.startswith("mock_"):
+            return [
+                {
+                    "external_id": "assistant_vapi_01",
+                    "name": "Vapi Customer Support Voice Bot",
+                    "description": "Voice assistant configured with GPT-4o and Deepgram Nova-2 STT",
+                    "created_at": "2025-01-15T10:00:00Z",
+                    "raw_metadata": {
+                        "id": "assistant_vapi_01",
+                        "name": "Vapi Customer Support Voice Bot",
+                        "model": {"provider": "openai", "model": "gpt-4o"},
+                        "transcriber": {"provider": "deepgram", "model": "nova-2"},
+                        "firstMessage": "Hello, thank you for calling support."
+                    }
+                },
+                {
+                    "external_id": "assistant_vapi_02",
+                    "name": "Vapi Outbound Appointment Scheduler",
+                    "description": "Automated appointment booking assistant with Google Calendar action bindings",
+                    "created_at": "2025-02-01T14:30:00Z",
+                    "raw_metadata": {
+                        "id": "assistant_vapi_02",
+                        "name": "Vapi Outbound Appointment Scheduler",
+                        "model": {"provider": "anthropic", "model": "claude-3-5-sonnet"},
+                        "firstMessage": "Hi! I am calling to confirm your appointment."
+                    }
+                }
+            ]
+
+        url = "https://api.vapi.ai/assistant"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            agents_list = []
+            if isinstance(data, list):
+                raw_assistants = data
+            elif isinstance(data, dict):
+                raw_assistants = data.get("assistants", data.get("data", []))
+            else:
+                raw_assistants = []
+
+            for ast in raw_assistants:
+                model_info = ast.get("model", {})
+                model_name = model_info.get("model") if isinstance(model_info, dict) else str(model_info)
+                first_msg = ast.get("firstMessage", "")
+
+                desc_parts = []
+                if model_name:
+                    desc_parts.append(f"Model: {model_name}")
+                if first_msg:
+                    desc_parts.append(f"Greeting: {first_msg[:60]}...")
+
+                agents_list.append({
+                    "external_id": ast.get("id"),
+                    "name": ast.get("name") or f"Vapi Assistant ({ast.get('id', 'unknown')})",
+                    "description": " | ".join(desc_parts) if desc_parts else None,
+                    "created_at": ast.get("createdAt"),
+                    "raw_metadata": ast
+                })
+
+            return agents_list
+
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("Failed to fetch assistants from Vapi API")
+            raise
+

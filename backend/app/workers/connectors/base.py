@@ -31,3 +31,19 @@ class BaseConnector(ABC):
                 - metadata (Dict[str, Any]): Provider-specific raw metadata.
         """
         pass
+
+    @abstractmethod
+    def list_agents() -> list[Dict[str, Any]]:
+        """
+        Fetches the list of agents available for this provider account and normalizes them.
+        
+        Returns:
+            list[Dict[str, Any]]: List of normalized agent dictionaries containing:
+                - external_id (str): Provider-specific agent ID
+                - name (str): Display name of agent
+                - description (Optional[str]): Description or summary
+                - created_at (Optional[str | datetime]): Creation date
+                - raw_metadata (Dict[str, Any]): Original raw metadata payload
+        """
+        pass
+

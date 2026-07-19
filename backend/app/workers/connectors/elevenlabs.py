@@ -138,3 +138,75 @@ class ElevenLabsConnector(BaseConnector):
                 "mocked": True
             }
         }
+
+    def list_agents(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves and normalizes agents from ElevenLabs Conversational AI API.
+        Supports cursor-based pagination.
+        """
+        if self.api_key == "mock" or self.api_key.startswith("mock_"):
+            return [
+                {
+                    "external_id": "agent_el_01",
+                    "name": "ElevenLabs Enterprise Sales Representative",
+                    "description": "Conversational sales agent tuned for inbound enterprise inquiries",
+                    "created_at": None,
+                    "raw_metadata": {
+                        "agent_id": "agent_el_01",
+                        "name": "ElevenLabs Enterprise Sales Representative",
+                        "tags": ["sales", "inbound", "enterprise"],
+                        "archived": False
+                    }
+                },
+                {
+                    "external_id": "agent_el_02",
+                    "name": "ElevenLabs Customer Support Concierge",
+                    "description": "Tier 1 customer support agent with live tool integration",
+                    "created_at": None,
+                    "raw_metadata": {
+                        "agent_id": "agent_el_02",
+                        "name": "ElevenLabs Customer Support Concierge",
+                        "tags": ["support", "tier1"],
+                        "archived": False
+                    }
+                }
+            ]
+
+        agents_list = []
+        url = "https://api.elevenlabs.io/v1/convai/agents"
+        headers = {"xi-api-key": self.api_key}
+        cursor = None
+
+        while True:
+            params = {"page_size": 100}
+            if cursor:
+                params["cursor"] = cursor
+
+            try:
+                response = requests.get(url, headers=headers, params=params, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+
+                raw_agents = data.get("agents", [])
+                for item in raw_agents:
+                    agents_list.append({
+                        "external_id": item.get("agent_id"),
+                        "name": item.get("name") or "Unnamed ElevenLabs Agent",
+                        "description": ", ".join(item.get("tags", [])) if item.get("tags") else None,
+                        "created_at": item.get("created_at_unix_secs"),
+                        "raw_metadata": item
+                    })
+
+                has_more = data.get("has_more", False)
+                next_cursor = data.get("next_cursor")
+
+                if not has_more or not next_cursor:
+                    break
+                cursor = next_cursor
+
+            except Exception as e:
+                logger.exception("Failed to fetch agents from ElevenLabs API")
+                raise
+
+        return agents_list
+

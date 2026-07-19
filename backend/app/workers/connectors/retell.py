@@ -129,3 +129,94 @@ class RetellConnector(BaseConnector):
                 "mocked": True
             }
         }
+
+    def list_agents(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves and normalizes agents from Retell AI API.
+        Tries direct agent listing endpoint first, falling back to call history derivation.
+        """
+        if self.api_key == "mock" or self.api_key.startswith("mock_"):
+            return [
+                {
+                    "external_id": "agent_retell_01",
+                    "name": "Retell Patient Triage & Intake Assistant",
+                    "description": "HIPAA-compliant patient check-in and medical history collection agent",
+                    "created_at": "2025-01-20T08:15:00Z",
+                    "raw_metadata": {
+                        "agent_id": "agent_retell_01",
+                        "agent_name": "Retell Patient Triage & Intake Assistant",
+                        "response_engine": {"type": "retell-llm"}
+                    }
+                },
+                {
+                    "external_id": "agent_retell_02",
+                    "name": "Retell Billing & Claims Specialist",
+                    "description": "Inbound revenue cycle and insurance verification specialist",
+                    "created_at": "2025-02-10T11:45:00Z",
+                    "raw_metadata": {
+                        "agent_id": "agent_retell_02",
+                        "agent_name": "Retell Billing & Claims Specialist",
+                        "response_engine": {"type": "custom-llm"}
+                    }
+                }
+            ]
+
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+
+        # Option 1: Try direct list-agents endpoint
+        try:
+            url = "https://api.retellai.com/v2/list-agents"
+            res = requests.get(url, headers=headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                agents_list = []
+                items = data if isinstance(data, list) else data.get("agents", [])
+                for item in items:
+                    ag_id = item.get("agent_id") or item.get("id")
+                    ag_name = item.get("agent_name") or item.get("name") or f"Retell Agent ({ag_id})"
+                    agents_list.append({
+                        "external_id": ag_id,
+                        "name": ag_name,
+                        "description": item.get("description") or f"Voice ID: {item.get('voice_id', 'default')}",
+                        "created_at": item.get("last_modification_timestamp") or item.get("created_at"),
+                        "raw_metadata": item
+                    })
+                if agents_list:
+                    return agents_list
+        except Exception:
+            pass
+
+        # Option 2 (Fallback): Derive agents from recent calls via POST /v3/list-calls
+        try:
+            url = "https://api.retellai.com/v3/list-calls"
+            res = requests.post(url, headers=headers, json={"limit": 100}, timeout=10)
+            res.raise_for_status()
+            calls = res.json()
+
+            unique_agents = {}
+            for call in calls:
+                ag_id = call.get("agent_id")
+                if not ag_id:
+                    continue
+
+                if ag_id not in unique_agents:
+                    ag_name = call.get("agent_name") or f"Retell Agent ({ag_id})"
+                    unique_agents[ag_id] = {
+                        "external_id": ag_id,
+                        "name": ag_name,
+                        "description": f"Derived from call history (Call ID: {call.get('call_id')})",
+                        "created_at": None,
+                        "raw_metadata": {
+                            "agent_id": ag_id,
+                            "agent_name": ag_name,
+                            "sample_call_id": call.get("call_id")
+                        }
+                    }
+
+            return list(unique_agents.values())
+
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("Failed to fetch/derive agents from Retell API")
+            raise
+
