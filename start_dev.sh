@@ -5,12 +5,12 @@ set -e
 
 echo "============================================="
 # Start Docker compose dependencies in the background
-echo "🚀 1. Starting database, message broker, and cache containers..."
+echo " 1. Starting database, message broker, and cache containers..."
 docker compose -f docker/docker-compose.yml up -d
 
 # Check for backend/app/config environment setup
 if [ ! -f backend/.env ]; then
-    echo "📄 2. Creating backend/.env from .env.example..."
+    echo " 2. Creating backend/.env from .env.example..."
     cp backend/.env.example backend/.env
     # Adjust hostnames to localhost for running backend natively on host machine
     if [ "$(uname)" = "Darwin" ] || [ "$(expr substr $(uname -s) 1 5)" = "Linux" ]; then
@@ -21,7 +21,7 @@ if [ ! -f backend/.env ]; then
 fi
 
 # Set up Python virtual environment for backend
-echo "🐍 3. Verifying Python virtual environment..."
+echo " 3. Verifying Python virtual environment..."
 cd backend
 if [ ! -d venv ]; then
     echo "Creating virtual environment in backend/venv..."
@@ -34,7 +34,7 @@ pip install -r requirements.txt
 cd ..
 
 # Set up Frontend packages
-echo "📦 4. Verifying frontend dependencies..."
+echo " 4. Verifying frontend dependencies..."
 cd frontend
 if [ ! -d node_modules ]; then
     echo "Installing frontend dependencies..."
@@ -43,7 +43,7 @@ fi
 cd ..
 
 echo "============================================="
-echo "🎉 Setup complete! Starting development servers..."
+echo " Setup complete! Starting development servers..."
 echo "Press Ctrl+C to stop all services simultaneously."
 echo "============================================="
 

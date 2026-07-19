@@ -19,4 +19,4 @@ celery_app.conf.update(
 )
 
 # Automatically discover tasks in tasks.py and worker modules
-# celery_app.autodiscover_tasks(["app.workers"])
+celery_app.autodiscover_tasks(["app.workers"], force=True)
