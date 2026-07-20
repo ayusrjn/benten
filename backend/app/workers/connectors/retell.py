@@ -1,35 +1,79 @@
 import requests
-from typing import Dict, Any, List
+import logging
+from typing import Dict, Any, List, Optional
+from datetime import datetime, timezone
 from app.workers.connectors.base import BaseConnector
+
+logger = logging.getLogger(__name__)
 
 class RetellConnector(BaseConnector):
     """
     Connector for Retell API.
-    Retrieves call details, recording URL, and transcript speaker turns.
+    Retrieves call details, recording URL, word-level timestamps, and speaker turns.
     """
-    def fetch_call_data(self, call_id: str) -> Dict[str, Any]:
+    def verify_key(self) -> tuple[bool, str]:
+        if self.api_key == "mock" or self.api_key.startswith("mock_"):
+            return True, "Mock Retell API key valid"
+        try:
+            url = "https://api.retellai.com/v3/list-calls"
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            res = requests.post(url, headers=headers, json={"limit": 1}, timeout=10)
+            if res.status_code == 200:
+                return True, "Successfully connected to Retell API"
+            elif res.status_code in (401, 403):
+                return False, "Invalid Retell API key"
+            return False, f"Retell API returned status code {res.status_code}"
+        except Exception as e:
+            return False, f"Failed to connect to Retell: {str(e)}"
+
+    def get_call(self, call_id: str) -> Dict[str, Any]:
         if self.api_key == "mock" or call_id.startswith("mock_"):
             return self._get_mock_data(call_id)
 
-        url = f"https://api.retellai.com/get-call/{call_id}"
+        url = f"https://api.retellai.com/v2/get-call/{call_id}"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
         
-        # Extract duration
+        # Duration
         duration_ms = data.get("duration_ms")
         if duration_ms is not None:
             duration_sec = int(duration_ms / 1000)
         else:
             duration_sec = int(data.get("duration_sec", data.get("duration", 0)))
             
-        # Extract audio URL
         audio_url = data.get("recording_url") or data.get("audio_url")
+        agent_name = data.get("agent_name") or data.get("agent_id") or "Retell Agent"
+        agent_id = data.get("agent_id")
         
-        # Extract agent ID/name
-        agent_name = data.get("agent_id") or "Retell Agent"
+        # Timestamps and cost
+        started_at = None
+        if data.get("start_timestamp"):
+            try:
+                started_at = datetime.fromtimestamp(data["start_timestamp"] / 1000.0, tz=timezone.utc)
+            except Exception:
+                pass
+                
+        ended_at = None
+        if data.get("end_timestamp"):
+            try:
+                ended_at = datetime.fromtimestamp(data["end_timestamp"] / 1000.0, tz=timezone.utc)
+            except Exception:
+                pass
+                
+        cost = None
+        call_cost = data.get("call_cost")
+        if isinstance(call_cost, (int, float)):
+            cost = float(call_cost)
+        elif isinstance(call_cost, dict):
+            cost = float(call_cost.get("product_costs", [{}])[0].get("cost", 0.0) if call_cost.get("product_costs") else 0.0)
+            
+        transcript = data.get("transcript") or ""
         
         # Extract turns from transcript_object
         turns = []
@@ -40,13 +84,11 @@ class RetellConnector(BaseConnector):
             speaker = "agent" if role in ("agent", "assistant", "bot") else "user"
             text = turn.get("content") or turn.get("text", "")
             
-            # Extract start and end times from word list if available
             words = turn.get("words", [])
             if words:
                 start_sec = words[0].get("start", 0.0)
                 end_sec = words[-1].get("end", start_sec + 0.1)
             else:
-                # Estimate timestamps if words are missing
                 start_sec = 0.0
                 if turns:
                     start_sec = turns[-1]["end_sec"] + 0.5
@@ -64,21 +106,121 @@ class RetellConnector(BaseConnector):
             })
             
         return {
+            "external_id": call_id,
+            "agent_id": agent_id,
+            "agent_name": agent_name,
             "audio_url": audio_url,
             "duration_sec": duration_sec,
-            "agent_name": agent_name,
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "cost": cost,
+            "transcript": transcript,
             "turns": turns,
             "metadata": data
         }
 
+    def fetch_call_data(self, call_id: str) -> Dict[str, Any]:
+        return self.get_call(call_id)
+
+    def list_calls(
+        self,
+        agent_id: Optional[str] = None,
+        created_after: Optional[datetime] = None,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieves call list from Retell AI via POST /v3/list-calls.
+        """
+        if self.api_key == "mock" or self.api_key.startswith("mock_"):
+            return self._get_mock_calls_list(agent_id, created_after)
+
+        url = "https://api.retellai.com/v3/list-calls"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        body: Dict[str, Any] = {"limit": min(limit, 100)}
+        if agent_id:
+            body["filter_criteria"] = {"agent_id": [agent_id]}
+
+        try:
+            response = requests.post(url, headers=headers, json=body, timeout=10)
+            response.raise_for_status()
+            raw_calls = response.json()
+
+            if not isinstance(raw_calls, list):
+                raw_calls = raw_calls.get("calls", [])
+
+            calls_list = []
+            for call in raw_calls:
+                cid = call.get("call_id")
+                st = None
+                if call.get("start_timestamp"):
+                    st = datetime.fromtimestamp(call["start_timestamp"] / 1000.0, tz=timezone.utc)
+
+                if call.get("end_timestamp"):
+                    et = datetime.fromtimestamp(call["end_timestamp"] / 1000.0, tz=timezone.utc)
+
+                dur_ms = call.get("duration_ms")
+                dur = int(dur_ms / 1000) if dur_ms else int(call.get("duration", 0))
+
+                cost_val = call.get("call_cost")
+                cost = float(cost_val) if isinstance(cost_val, (int, float)) else None
+
+                calls_list.append({
+                    "external_id": cid,
+                    "agent_id": call.get("agent_id") or agent_id,
+                    "started_at": st,
+                    "ended_at": et,
+                    "duration_sec": dur,
+                    "status": call.get("call_status", "completed"),
+                    "cost": cost,
+                    "raw_metadata": call
+                })
+
+            return calls_list
+
+        except Exception as e:
+            logger.exception("Failed to fetch calls from Retell API")
+            return []
+
+    def _get_mock_calls_list(self, agent_id: Optional[str], created_after: Optional[datetime]) -> List[Dict[str, Any]]:
+        now = datetime.now(timezone.utc)
+        return [
+            {
+                "external_id": "mock_retell_call_001",
+                "agent_id": agent_id or "agent_retell_01",
+                "started_at": now,
+                "ended_at": now,
+                "duration_sec": 60,
+                "status": "completed",
+                "cost": 0.0550,
+                "raw_metadata": {"mocked": True, "call_id": "mock_retell_call_001"}
+            },
+            {
+                "external_id": "mock_retell_call_002",
+                "agent_id": agent_id or "agent_retell_02",
+                "started_at": now,
+                "ended_at": now,
+                "duration_sec": 90,
+                "status": "completed",
+                "cost": 0.0820,
+                "raw_metadata": {"mocked": True, "call_id": "mock_retell_call_002"}
+            }
+        ]
+
     def _get_mock_data(self, call_id: str) -> Dict[str, Any]:
-        """
-        Returns high-quality mock data for testing.
-        """
+        now = datetime.now(timezone.utc)
         return {
+            "external_id": call_id,
+            "agent_id": "agent_retell_01",
+            "agent_name": "Mock Retell Agent",
             "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
             "duration_sec": 60,
-            "agent_name": "Mock Retell Agent",
+            "started_at": now,
+            "ended_at": now,
+            "cost": 0.0550,
+            "transcript": "Agent: Hello! Thank you for calling Retell AI support center.",
             "turns": [
                 {
                     "speaker": "agent",
@@ -90,37 +232,7 @@ class RetellConnector(BaseConnector):
                     "speaker": "user",
                     "start_sec": 6.2,
                     "end_sec": 12.0,
-                    "text": "Hello, I am testing the Retell connector integration. We need to verify that word level timestamps are parsed and speakers are mapped correctly."
-                },
-                {
-                    "speaker": "agent",
-                    "start_sec": 13.0,
-                    "end_sec": 18.5,
-                    "text": "Absolutely! The Retell connector reads from the transcript object array and parses the start and end of speech segments from the word-level objects."
-                },
-                {
-                    "speaker": "user",
-                    "start_sec": 19.5,
-                    "end_sec": 21.0,
-                    "text": "Perfect, that works for me."
-                },
-                {
-                    "speaker": "agent",
-                    "start_sec": 21.5,
-                    "end_sec": 23.0,
-                    "text": "Is there anything else I can help you with today?"
-                },
-                {
-                    "speaker": "user",
-                    "start_sec": 23.5,
-                    "end_sec": 25.0,
-                    "text": "No, that's all. Thank you."
-                },
-                {
-                    "speaker": "agent",
-                    "start_sec": 25.5,
-                    "end_sec": 27.0,
-                    "text": "Thank you for calling. Have a great day!"
+                    "text": "Hello, I am testing the Retell connector integration."
                 }
             ],
             "metadata": {

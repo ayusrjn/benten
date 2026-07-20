@@ -66,6 +66,7 @@ class IntegrationResponse(BaseModel):
     apiKey: str
     webhookUrl: Optional[str] = None
     config: Optional[dict] = None
+    lastSyncedAt: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -143,13 +144,16 @@ def list_integrations(
         if integration.api_key:
             masked_key = "••••••••••••••••••••••••" + integration.api_key[-4:]
             
+        last_synced_str = integration.last_synced_at.isoformat() if integration.last_synced_at else None
+
         response_list.append(IntegrationResponse(
             id=provider_key,
             name=integration.name,
             connected=integration.connected,
             apiKey=masked_key,
             webhookUrl=integration.webhook_url,
-            config=integration.config
+            config=integration.config,
+            lastSyncedAt=last_synced_str
         ))
         
     response.headers["x-total-count"] = str(len(response_list))
@@ -178,13 +182,16 @@ def get_integration(
     if integration.api_key:
         masked_key = "••••••••••••••••••••••••" + integration.api_key[-4:]
         
+    last_synced_str = integration.last_synced_at.isoformat() if integration.last_synced_at else None
+
     return IntegrationResponse(
         id=id.lower(),
         name=integration.name,
         connected=integration.connected,
         apiKey=masked_key,
         webhookUrl=integration.webhook_url,
-        config=integration.config
+        config=integration.config,
+        lastSyncedAt=last_synced_str
     )
 
 from datetime import datetime, timezone
@@ -320,13 +327,16 @@ def update_integration(
     if integration.api_key:
         masked_key = "••••••••••••••••••••••••" + integration.api_key[-4:]
         
+    last_synced_str = integration.last_synced_at.isoformat() if integration.last_synced_at else None
+
     return IntegrationResponse(
         id=id.lower(),
         name=integration.name,
         connected=integration.connected,
         apiKey=masked_key,
         webhookUrl=integration.webhook_url,
-        config=integration.config
+        config=integration.config,
+        lastSyncedAt=last_synced_str
     )
 
 
@@ -401,4 +411,44 @@ def sync_integration_agents(
         count=len(agents),
         message=f"Successfully synced {len(agents)} agents from {provider_name}"
     )
+
+
+class SyncCallsResponse(BaseModel):
+    success: bool
+    total: int
+    imported: int
+    skipped: int
+    message: str
+
+
+@router.post("/{id}/sync-calls", response_model=SyncCallsResponse)
+def sync_integration_calls(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    project = get_or_create_user_project(db, current_user)
+    provider_name = PROVIDER_KEY_TO_NAME.get(id.lower())
+    if not provider_name:
+        raise HTTPException(status_code=404, detail=f"Integration provider '{id}' not found")
+
+    integration = db.query(Integration).filter(
+        Integration.project_id == project.id,
+        Integration.name == provider_name
+    ).first()
+
+    if not integration or not integration.connected or not integration.api_key:
+        raise HTTPException(status_code=400, detail=f"Provider '{provider_name}' is not connected. Please enter an API key first.")
+
+    from app.workers.tasks import sync_calls_for_integration
+    result = sync_calls_for_integration(db, str(project.id), id.lower())
+    
+    return SyncCallsResponse(
+        success=True,
+        total=result["total"],
+        imported=result["imported"],
+        skipped=result["skipped"],
+        message=f"Sync completed for {provider_name}: {result['imported']} imported, {result['skipped']} skipped out of {result['total']} calls."
+    )
+
 

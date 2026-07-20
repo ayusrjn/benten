@@ -8,12 +8,32 @@ from typing import BinaryIO, Tuple
 
 logger = logging.getLogger(__name__)
 
+import os
+
 def download_audio_stream(audio_url: str) -> io.BytesIO:
     """
     Downloads audio from the given URL into an in-memory buffer.
+    Supports relative /static/ paths by attempting local disk read first.
     """
     logger.info(f"Downloading audio stream from: {audio_url}")
-    response = requests.get(audio_url, stream=True)
+    if not audio_url:
+        raise ValueError("Audio URL is empty or not available")
+
+    # Handle relative static paths
+    if audio_url.startswith("/static/"):
+        storage_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "storage", "audio"))
+        filename = os.path.basename(audio_url)
+        local_filepath = os.path.join(storage_dir, filename)
+
+        if os.path.exists(local_filepath):
+            logger.info(f"Loading static audio directly from local file: {local_filepath}")
+            with open(local_filepath, "rb") as f:
+                return io.BytesIO(f.read())
+        else:
+            # Fallback to local server HTTP request
+            audio_url = f"http://localhost:8000{audio_url}"
+
+    response = requests.get(audio_url, stream=True, timeout=30)
     response.raise_for_status()
     buffer = io.BytesIO()
     for chunk in response.iter_content(chunk_size=8192):

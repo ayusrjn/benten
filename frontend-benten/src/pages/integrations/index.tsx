@@ -19,6 +19,8 @@ import {
   ApiOutlined,
   SaveOutlined,
   ExperimentOutlined,
+  SyncOutlined,
+  CloudDownloadOutlined,
   EyeInvisibleOutlined,
   EyeTwoTone
 } from "@ant-design/icons";
@@ -33,6 +35,7 @@ interface Integration {
   apiKey: string;
   webhookUrl: string | null;
   config: any;
+  lastSyncedAt?: string | null;
 }
 
 const PROVIDER_INFO: Record<string, { desc: string; color: string; webhookDesc: string }> = {
@@ -63,6 +66,8 @@ export const IntegrationsPage: React.FC = () => {
   const [formStates, setFormStates] = useState<Record<string, { apiKey: string; webhookUrl: string }>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [syncingCallsId, setSyncingCallsId] = useState<string | null>(null);
+  const [syncingAgentsId, setSyncingAgentsId] = useState<string | null>(null);
 
   // Track connection test result alerts
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
@@ -81,7 +86,6 @@ export const IntegrationsPage: React.FC = () => {
       }
 
       const data = await response.json();
-      // Remove any OpenAI entry if returned by legacy DB seeds
       const filtered = data.filter((item: Integration) => item.id !== "openai");
       setIntegrations(filtered);
       
@@ -115,7 +119,6 @@ export const IntegrationsPage: React.FC = () => {
       }
     }));
     
-    // Reset manual connection test status when key changes
     if (field === "apiKey") {
       setTestResults(prev => {
         const next = { ...prev };
@@ -196,11 +199,7 @@ export const IntegrationsPage: React.FC = () => {
       }
 
       const updated = await response.json();
-      
-      // Update local integrations state
       setIntegrations(prev => prev.map(item => item.id === id ? updated : item));
-      
-      // Clear manual test results on save success since connection is now verified in DB
       setTestResults(prev => {
         const next = { ...prev };
         delete next[id];
@@ -228,6 +227,75 @@ export const IntegrationsPage: React.FC = () => {
     }
   };
 
+  const handleSyncCalls = async (id: string) => {
+    setSyncingCallsId(id);
+    try {
+      const tokenVal = localStorage.getItem(TOKEN_KEY);
+      const response = await fetch(`${API_URL}/integrations/${id}/sync-calls`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenVal}`
+        }
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || "Call sync request failed");
+      }
+
+      const resData = await response.json();
+      notification.success({
+        message: "Calls Synchronized",
+        description: resData.message || `Sync finished for ${id}.`,
+        placement: "bottomRight"
+      });
+      fetchIntegrations();
+    } catch (err: any) {
+      console.error(err);
+      notification.error({
+        message: "Call Sync Error",
+        description: err.message || "Failed to trigger call sync.",
+        placement: "bottomRight"
+      });
+    } finally {
+      setSyncingCallsId(null);
+    }
+  };
+
+  const handleSyncAgents = async (id: string) => {
+    setSyncingAgentsId(id);
+    try {
+      const tokenVal = localStorage.getItem(TOKEN_KEY);
+      const response = await fetch(`${API_URL}/integrations/${id}/sync-agents`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenVal}`
+        }
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || "Agent sync request failed");
+      }
+
+      const resData = await response.json();
+      notification.success({
+        message: "Agents Synchronized",
+        description: resData.message || `Agent sync finished for ${id}.`,
+        placement: "bottomRight"
+      });
+    } catch (err: any) {
+      console.error(err);
+      notification.error({
+        message: "Agent Sync Error",
+        description: err.message || "Failed to sync agents.",
+        placement: "bottomRight"
+      });
+    } finally {
+      setSyncingAgentsId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh" }}>
@@ -248,7 +316,7 @@ export const IntegrationsPage: React.FC = () => {
     <div style={{ padding: "24px", minHeight: "100vh" }}>
       <div style={{ marginBottom: "32px" }}>
         <Title level={2} style={{ margin: 0, fontWeight: 600 }}>Integrations</Title>
-        <Text type="secondary">Connect voice AI agent platforms to monitor evaluations, latencies, and transcripts</Text>
+        <Text type="secondary">Connect voice AI agent platforms to sync historical calls, agents, and evaluations</Text>
       </div>
 
       <Row gutter={[24, 24]}>
@@ -260,6 +328,9 @@ export const IntegrationsPage: React.FC = () => {
           };
 
           const testResult = testResults[integration.id];
+          const lastSyncedFormatted = integration.lastSyncedAt 
+            ? new Date(integration.lastSyncedAt).toLocaleString() 
+            : null;
 
           return (
             <Col xs={24} lg={12} key={integration.id}>
@@ -302,19 +373,27 @@ export const IntegrationsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <Badge
-                    status={integration.connected ? "success" : "default"}
-                    text={
-                      <span style={{ color: integration.connected ? token.colorSuccess : token.colorTextDescription, fontWeight: 500 }}>
-                        {integration.connected ? "Connected" : "Disconnected"}
-                      </span>
-                    }
-                  />
+                  <div style={{ textAlign: "right" }}>
+                    <Badge
+                      status={integration.connected ? "success" : "default"}
+                      text={
+                        <span style={{ color: integration.connected ? token.colorSuccess : token.colorTextDescription, fontWeight: 500 }}>
+                          {integration.connected ? "Connected" : "Disconnected"}
+                        </span>
+                      }
+                    />
+                    {lastSyncedFormatted && (
+                      <div style={{ marginTop: "4px" }}>
+                        <Text type="secondary" style={{ fontSize: "11px" }}>
+                          Last synced: {lastSyncedFormatted}
+                        </Text>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* Card Fields Container (groups fields tightly with gap) */}
+                {/* Card Fields Container */}
                 <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: "16px", marginBottom: "24px" }}>
-                  {/* Description */}
                   <Paragraph style={{ color: token.colorTextSecondary, fontSize: "14px", margin: 0 }}>
                     {info.desc}
                   </Paragraph>
@@ -370,7 +449,7 @@ export const IntegrationsPage: React.FC = () => {
                     integration.connected && (
                       <Alert
                         message="Connection Active"
-                        description="API key verified. Call evaluations will sync automatically."
+                        description="API key verified. Ready for automatic and manual call synchronization."
                         type="success"
                         showIcon
                         style={{ borderRadius: "8px" }}
@@ -379,35 +458,61 @@ export const IntegrationsPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Actions */}
-                <div style={{ display: "flex", gap: "12px", borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: "20px" }}>
-                  <Button
-                    onClick={() => handleTestConnection(integration.id)}
-                    loading={testingId === integration.id}
-                    icon={<ExperimentOutlined />}
-                    style={{
-                      flex: 1,
-                      borderRadius: "8px"
-                    }}
-                  >
-                    Test Connection
-                  </Button>
-                  <Button
-                    type="primary"
-                    onClick={() => handleSaveIntegration(integration.id)}
-                    loading={savingId === integration.id}
-                    icon={<SaveOutlined />}
-                    style={{
-                      flex: 1,
-                      background: info.color,
-                      borderColor: info.color,
-                      color: "#fff",
-                      borderRadius: "8px",
-                      fontWeight: 500
-                    }}
-                  >
-                    Save Settings
-                  </Button>
+                {/* Actions Grid */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: "20px" }}>
+                  <div style={{ display: "flex", gap: "12px" }}>
+                    <Button
+                      onClick={() => handleTestConnection(integration.id)}
+                      loading={testingId === integration.id}
+                      icon={<ExperimentOutlined />}
+                      style={{ flex: 1, borderRadius: "8px" }}
+                    >
+                      Test Connection
+                    </Button>
+                    <Button
+                      type="primary"
+                      onClick={() => handleSaveIntegration(integration.id)}
+                      loading={savingId === integration.id}
+                      icon={<SaveOutlined />}
+                      style={{
+                        flex: 1,
+                        background: info.color,
+                        borderColor: info.color,
+                        color: "#fff",
+                        borderRadius: "8px",
+                        fontWeight: 500
+                      }}
+                    >
+                      Save Settings
+                    </Button>
+                  </div>
+
+                  {integration.connected && (
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <Button
+                        onClick={() => handleSyncAgents(integration.id)}
+                        loading={syncingAgentsId === integration.id}
+                        icon={<SyncOutlined />}
+                        style={{ flex: 1, borderRadius: "8px" }}
+                      >
+                        Sync Agents
+                      </Button>
+                      <Button
+                        onClick={() => handleSyncCalls(integration.id)}
+                        loading={syncingCallsId === integration.id}
+                        icon={<CloudDownloadOutlined />}
+                        style={{
+                          flex: 1,
+                          borderRadius: "8px",
+                          borderColor: info.color,
+                          color: info.color,
+                          fontWeight: 500
+                        }}
+                      >
+                        Sync Calls
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </Card>
             </Col>
@@ -417,3 +522,4 @@ export const IntegrationsPage: React.FC = () => {
     </div>
   );
 };
+

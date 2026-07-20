@@ -34,11 +34,12 @@ import { ForgotPassword } from "./pages/forgotPassword";
 import { Dashboard } from "./pages/dashboard";
 import { IntegrationsPage } from "./pages/integrations";
 import { AgentsPage } from "./pages/agents";
+import { CallsPage } from "./pages/calls";
 import { authProvider } from "./providers/auth";
 
 import {
   DashboardOutlined,
-  MessageOutlined,
+  PhoneOutlined,
   RobotOutlined,
   AlertOutlined,
   ApiOutlined,
@@ -70,8 +71,8 @@ function App() {
                     list: "/conversations",
                     show: "/conversations/:id",
                     meta: {
-                      label: "Conversations",
-                      icon: <MessageOutlined />,
+                      label: "Calls",
+                      icon: <PhoneOutlined />,
                     },
                   },
                   {
@@ -137,8 +138,10 @@ function App() {
                       element={<NavigateToResource resource="dashboard" />}
                     />
                     <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/conversations" element={<div style={{ padding: "24px" }}>Conversations Placeholder</div>} />
-                    <Route path="/conversations/:id" element={<div style={{ padding: "24px" }}>Conversation Detail Placeholder</div>} />
+                    <Route path="/calls" element={<CallsPage />} />
+                    <Route path="/calls/:id" element={<CallsPage />} />
+                    <Route path="/conversations" element={<CallsPage />} />
+                    <Route path="/conversations/:id" element={<CallsPage />} />
                     <Route path="/agents" element={<AgentsPage />} />
                     <Route path="/alerts" element={<div style={{ padding: "24px" }}>Alerts Placeholder</div>} />
                     <Route path="/integrations" element={<IntegrationsPage />} />

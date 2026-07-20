@@ -16,7 +16,8 @@ class SileroVADWrapper:
             repo_or_dir='snakers4/silero-vad',
             model='silero_vad',
             force_reload=False,
-            onnx=True
+            onnx=True,
+            trust_repo=True
         )
         self.get_speech_ts = self.utils[0]
 

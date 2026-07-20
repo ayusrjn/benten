@@ -1,13 +1,32 @@
 import requests
-from typing import Dict, Any, List
+import logging
+from typing import Dict, Any, List, Optional
+from datetime import datetime, timezone
 from app.workers.connectors.base import BaseConnector
+
+logger = logging.getLogger(__name__)
 
 class VapiConnector(BaseConnector):
     """
     Connector for Vapi.ai API.
-    Retrieves call details, audio URL, and speaker message turns.
+    Retrieves assistants, call summaries, full call recordings, and speaker turns.
     """
-    def fetch_call_data(self, call_id: str) -> Dict[str, Any]:
+    def verify_key(self) -> tuple[bool, str]:
+        if self.api_key == "mock" or self.api_key.startswith("mock_"):
+            return True, "Mock Vapi API key valid"
+        try:
+            url = "https://api.vapi.ai/assistant"
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+            res = requests.get(url, headers=headers, params={"limit": 1}, timeout=10)
+            if res.status_code == 200:
+                return True, "Successfully connected to Vapi API"
+            elif res.status_code in (401, 403):
+                return False, "Invalid Vapi API key"
+            return False, f"Vapi API returned status code {res.status_code}"
+        except Exception as e:
+            return False, f"Failed to connect to Vapi: {str(e)}"
+
+    def get_call(self, call_id: str) -> Dict[str, Any]:
         if self.api_key == "mock" or call_id.startswith("mock_"):
             return self._get_mock_data(call_id)
 
@@ -18,21 +37,34 @@ class VapiConnector(BaseConnector):
         response.raise_for_status()
         data = response.json()
         
-        # Extract duration
         duration_sec = int(data.get("duration", 0))
-        
-        # Extract audio URL
         audio_url = data.get("recordingUrl")
-        
-        # Extract agent name
         assistant = data.get("assistant", {})
         agent_name = assistant.get("name") or data.get("assistantId") or "Vapi Agent"
+        agent_id = data.get("assistantId") or assistant.get("id")
         
-        # Extract turns from messages
+        # Timestamps and cost
+        started_at = None
+        if data.get("createdAt"):
+            try:
+                started_at = datetime.fromisoformat(data.get("createdAt").replace("Z", "+00:00"))
+            except Exception:
+                pass
+                
+        ended_at = None
+        if data.get("endedAt"):
+            try:
+                ended_at = datetime.fromisoformat(data.get("endedAt").replace("Z", "+00:00"))
+            except Exception:
+                pass
+                
+        cost = data.get("cost")
+        
+        # Extract transcript & turns from messages
         turns = []
         messages = data.get("messages", [])
+        transcript = data.get("transcript") or ""
         
-        # Filter for actual speaker turns
         speech_messages = [
             m for m in messages 
             if m.get("role") in ("assistant", "user", "bot", "customer") and m.get("message")
@@ -47,8 +79,6 @@ class VapiConnector(BaseConnector):
             if start_sec is None:
                 start_sec = 0.0
                 
-            # Estimate end time based on message length and next turn
-            # Average reading speed is about 15 characters per second
             estimated_duration = len(text) / 15.0 + 0.5
             
             if i < len(speech_messages) - 1:
@@ -60,7 +90,6 @@ class VapiConnector(BaseConnector):
             else:
                 end_sec = start_sec + estimated_duration
                 
-            # Cap end_sec at duration if duration is available
             if duration_sec > 0:
                 end_sec = min(end_sec, duration_sec)
                 
@@ -72,21 +101,120 @@ class VapiConnector(BaseConnector):
             })
             
         return {
+            "external_id": call_id,
+            "agent_id": agent_id,
+            "agent_name": agent_name,
             "audio_url": audio_url,
             "duration_sec": duration_sec,
-            "agent_name": agent_name,
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "cost": cost,
+            "transcript": transcript,
             "turns": turns,
             "metadata": data
         }
 
+    def fetch_call_data(self, call_id: str) -> Dict[str, Any]:
+        return self.get_call(call_id)
+
+    def list_calls(
+        self,
+        agent_id: Optional[str] = None,
+        created_after: Optional[datetime] = None,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieves call list for Vapi assistant with optional createdAtGt filter.
+        """
+        if self.api_key == "mock" or self.api_key.startswith("mock_"):
+            return self._get_mock_calls_list(agent_id, created_after)
+
+        url = "https://api.vapi.ai/call"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        params: Dict[str, Any] = {"limit": min(limit, 100)}
+        if agent_id:
+            params["assistantId"] = agent_id
+        if created_after:
+            params["createdAtGt"] = created_after.isoformat()
+
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            raw_calls = data if isinstance(data, list) else data.get("calls", data.get("data", []))
+            calls_list = []
+
+            for item in raw_calls:
+                call_id = item.get("id")
+                st = None
+                if item.get("createdAt"):
+                    try:
+                        st = datetime.fromisoformat(item["createdAt"].replace("Z", "+00:00"))
+                    except Exception:
+                        pass
+                        
+                et = None
+                if item.get("endedAt"):
+                    try:
+                        et = datetime.fromisoformat(item["endedAt"].replace("Z", "+00:00"))
+                    except Exception:
+                        pass
+
+                calls_list.append({
+                    "external_id": call_id,
+                    "agent_id": item.get("assistantId") or agent_id,
+                    "started_at": st,
+                    "ended_at": et,
+                    "duration_sec": int(item.get("duration", 0)),
+                    "status": item.get("status", "ended"),
+                    "cost": item.get("cost"),
+                    "raw_metadata": item
+                })
+
+            return calls_list
+
+        except Exception as e:
+            logger.exception("Failed to fetch calls from Vapi API")
+            return []
+
+    def _get_mock_calls_list(self, agent_id: Optional[str], created_after: Optional[datetime]) -> List[Dict[str, Any]]:
+        now = datetime.now(timezone.utc)
+        return [
+            {
+                "external_id": "mock_vapi_call_001",
+                "agent_id": agent_id or "assistant_vapi_01",
+                "started_at": now,
+                "ended_at": now,
+                "duration_sec": 45,
+                "status": "ended",
+                "cost": 0.0320,
+                "raw_metadata": {"mocked": True, "id": "mock_vapi_call_001"}
+            },
+            {
+                "external_id": "mock_vapi_call_002",
+                "agent_id": agent_id or "assistant_vapi_02",
+                "started_at": now,
+                "ended_at": now,
+                "duration_sec": 60,
+                "status": "ended",
+                "cost": 0.0480,
+                "raw_metadata": {"mocked": True, "id": "mock_vapi_call_002"}
+            }
+        ]
+
     def _get_mock_data(self, call_id: str) -> Dict[str, Any]:
-        """
-        Returns high-quality mock data for testing.
-        """
+        now = datetime.now(timezone.utc)
         return {
+            "external_id": call_id,
+            "agent_id": "assistant_vapi_01",
+            "agent_name": "Mock Vapi Assistant",
             "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
             "duration_sec": 45,
-            "agent_name": "Mock Vapi Assistant",
+            "started_at": now,
+            "ended_at": now,
+            "cost": 0.0320,
+            "transcript": "Agent: Hello, thank you for calling Benten Support.",
             "turns": [
                 {
                     "speaker": "agent",
@@ -98,25 +226,7 @@ class VapiConnector(BaseConnector):
                     "speaker": "user",
                     "start_sec": 5.0,
                     "end_sec": 10.5,
-                    "text": "Hi, I am setting up the provider ingestion. The Celery tasks seem to be triggering correctly, but I need to make sure the database saves speech segments."
-                },
-                {
-                    "speaker": "agent",
-                    "start_sec": 11.2,
-                    "end_sec": 16.8,
-                    "text": "That's great. Yes, the database stores speech segments chunked by creation time in a hypertable. Let's make sure the turns are parsed properly."
-                },
-                {
-                    "speaker": "user",
-                    "start_sec": 17.5,
-                    "end_sec": 20.0,
-                    "text": "Excellent, everything looks good on my end. Thank you!"
-                },
-                {
-                    "speaker": "agent",
-                    "start_sec": 20.5,
-                    "end_sec": 23.0,
-                    "text": "You're welcome. Have a wonderful day!"
+                    "text": "Hi, I am setting up the provider ingestion task."
                 }
             ],
             "metadata": {
