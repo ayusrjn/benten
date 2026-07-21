@@ -47,6 +47,16 @@ export interface SpeechSegment {
   text: string;
 }
 
+export interface InterruptionEvent {
+  start: number;
+  end: number;
+  duration: number;
+  interrupter: string;
+  interrupted: string;
+  type: string;
+  barge_in_status?: string | null;
+}
+
 export interface InterruptionDetails {
   user_to_ai_interruptions: number;
   ai_to_user_interruptions: number;
@@ -56,6 +66,7 @@ export interface InterruptionDetails {
   interruptions_per_minute: number;
   barge_ins_accepted: number;
   barge_ins_ignored: number;
+  events?: InterruptionEvent[];
 }
 
 export interface CallDetail {
@@ -473,6 +484,47 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
                         </div>
                       </Col>
                     </Row>
+
+                    {/* Interactive Timestamps Stream */}
+                    {intDetails?.events && intDetails.events.length > 0 && (
+                      <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px dashed ${token.colorBorderSecondary}` }}>
+                        <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, display: "block", marginBottom: 8 }}>
+                          INTERRUPTION EVENT TIMESTAMPS (CLICK TO SEEK AUDIO):
+                        </Text>
+                        <Space wrap size={[6, 6]}>
+                          {intDetails.events.map((ev, idx) => {
+                            const isUserToAi = ev.type === "user_to_ai";
+                            const isAccepted = ev.barge_in_status === "accepted";
+                            const tagColor = isUserToAi ? (isAccepted ? "success" : "warning") : "processing";
+                            return (
+                              <Tooltip
+                                key={idx}
+                                title={`Click to jump to ${ev.start.toFixed(1)}s in audio (${ev.interrupter} interrupted ${ev.interrupted})`}
+                              >
+                                <Tag
+                                  color={tagColor}
+                                  onClick={() => seekAudio(ev.start)}
+                                  style={{
+                                    cursor: "pointer",
+                                    borderRadius: 6,
+                                    padding: "2px 8px",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4
+                                  }}
+                                >
+                                  <PlayCircleOutlined style={{ fontSize: 11 }} />
+                                  <span>{ev.start.toFixed(1)}s - {ev.end.toFixed(1)}s</span>
+                                  <span style={{ opacity: 0.75, fontSize: 10 }}>({ev.duration}s {ev.type === "user_to_ai" ? "User→AI" : "AI→User"})</span>
+                                </Tag>
+                              </Tooltip>
+                            );
+                          })}
+                        </Space>
+                      </div>
+                    )}
                   </Card>
                 </div>
 

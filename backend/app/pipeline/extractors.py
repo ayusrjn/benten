@@ -106,6 +106,7 @@ def calculate_detailed_interruptions(speech_segments: List[Dict[str, Any]], call
     barge_ins_accepted = 0
     barge_ins_ignored = 0
     overlap_durations = []
+    events = []
 
     norm_segments = []
     for s in speech_segments:
@@ -129,20 +130,36 @@ def calculate_detailed_interruptions(speech_segments: List[Dict[str, Any]], call
                 overlap_dur = overlap_end - overlap_start
 
                 if overlap_dur > 0:
-                    overlap_durations.append(round(overlap_dur, 3))
+                    overlap_dur_rounded = round(overlap_dur, 2)
+                    overlap_durations.append(overlap_dur_rounded)
 
                     interrupted_role = seg_i["role"]
                     interrupter_role = seg_j["role"]
 
+                    barge_in_status = None
                     if interrupter_role == "user" and interrupted_role == "agent":
+                        event_type = "user_to_ai"
                         user_to_ai += 1
                         agent_remaining = seg_i["end"] - seg_j["start"]
                         if agent_remaining <= 0.8:
                             barge_ins_accepted += 1
+                            barge_in_status = "accepted"
                         else:
                             barge_ins_ignored += 1
-                    elif interrupter_role == "agent" and interrupted_role == "user":
+                            barge_in_status = "ignored"
+                    else:
+                        event_type = "ai_to_user"
                         ai_to_user += 1
+
+                    events.append({
+                        "start": round(overlap_start, 2),
+                        "end": round(overlap_end, 2),
+                        "duration": overlap_dur_rounded,
+                        "interrupter": interrupter_role,
+                        "interrupted": interrupted_role,
+                        "type": event_type,
+                        "barge_in_status": barge_in_status
+                    })
 
     total_events = user_to_ai + ai_to_user
     avg_overlap = round(sum(overlap_durations) / len(overlap_durations), 2) if overlap_durations else 0.0
@@ -163,7 +180,8 @@ def calculate_detailed_interruptions(speech_segments: List[Dict[str, Any]], call
         "longest_interruption_sec": longest_overlap,
         "interruptions_per_minute": rate_per_min,
         "barge_ins_accepted": barge_ins_accepted,
-        "barge_ins_ignored": barge_ins_ignored
+        "barge_ins_ignored": barge_ins_ignored,
+        "events": events
     }
 
 
