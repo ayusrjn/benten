@@ -11,6 +11,9 @@ import {
   Typography,
   Space,
   notification,
+  Tag,
+  Tooltip,
+  Collapse,
   theme
 } from "antd";
 import {
@@ -22,7 +25,13 @@ import {
   SyncOutlined,
   CloudDownloadOutlined,
   EyeInvisibleOutlined,
-  EyeTwoTone
+  EyeTwoTone,
+  CopyOutlined,
+  CheckOutlined,
+  QuestionCircleOutlined,
+  SafetyCertificateOutlined,
+  GlobalOutlined,
+  CheckCircleOutlined
 } from "@ant-design/icons";
 import { API_URL, TOKEN_KEY } from "../../providers/constants";
 
@@ -38,21 +47,39 @@ interface Integration {
   lastSyncedAt?: string | null;
 }
 
-const PROVIDER_INFO: Record<string, { desc: string; color: string; webhookDesc: string }> = {
+const PROVIDER_INFO: Record<string, { desc: string; color: string; webhookDesc: string; setupSteps: string[] }> = {
   vapi: {
-    desc: "Benten automatically ingests call recordings, transcripts, and telemetry via Vapi's webhook payloads.",
+    desc: "Benten automatically ingests call recordings, transcripts, and turn-by-turn latency metrics via Vapi's webhook event payload.",
     color: "#8b5cf6",
-    webhookDesc: "Set this URL in your Vapi Dashboard under Webhooks to auto-evaluate calls."
+    webhookDesc: "Set this Webhook URL in your Vapi Dashboard under Account Settings -> Webhooks.",
+    setupSteps: [
+      "Open your Vapi Dashboard (dashboard.vapi.ai) and navigate to Account -> Webhooks.",
+      "Paste the Webhook Endpoint URL into the Server URL field.",
+      "Ensure 'end-of-call-report' events are enabled.",
+      "Paste your Vapi Private API Key below to enable manual historical sync."
+    ]
   },
   retell: {
-    desc: "Fetch agent responses, latency logs, and conversation transcripts from your Retell AI account.",
+    desc: "Fetch agent responses, latency logs, and voice conversation transcripts from your Retell AI account.",
     color: "#10b981",
-    webhookDesc: "Configure this webhook URL inside your Retell developer settings."
+    webhookDesc: "Configure this webhook URL inside your Retell AI Developer Settings.",
+    setupSteps: [
+      "Log into your Retell AI Dashboard and navigate to API & Integrations.",
+      "Copy your Retell API Key and paste it into the input below.",
+      "Click 'Test Connection' to verify API key permissions.",
+      "Use 'Sync Agents' and 'Sync Calls' to fetch historical conversation logs."
+    ]
   },
   elevenlabs: {
-    desc: "Ingest custom agent profiles, speech synthesis, and voice performance parameters from ElevenLabs.",
+    desc: "Ingest custom agent profiles, speech synthesis audio, and voice performance parameters from ElevenLabs Conversational AI.",
     color: "#f59e0b",
-    webhookDesc: "Provide this Webhook endpoint inside ElevenLabs developer settings."
+    webhookDesc: "Provide this Webhook endpoint inside ElevenLabs agent developer settings.",
+    setupSteps: [
+      "Navigate to ElevenLabs Conversational AI Platform Settings -> API Keys.",
+      "Generate a new API Key with read/write access.",
+      "Paste your ElevenLabs API key below and save settings.",
+      "Click 'Sync Calls' to download agent audio recordings."
+    ]
   }
 };
 
@@ -62,14 +89,13 @@ export const IntegrationsPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Separate states for inputs so users can edit them
   const [formStates, setFormStates] = useState<Record<string, { apiKey: string; webhookUrl: string }>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [syncingCallsId, setSyncingCallsId] = useState<string | null>(null);
   const [syncingAgentsId, setSyncingAgentsId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Track connection test result alerts
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
 
   const fetchIntegrations = async () => {
@@ -88,7 +114,7 @@ export const IntegrationsPage: React.FC = () => {
       const data = await response.json();
       const filtered = data.filter((item: Integration) => item.id !== "openai");
       setIntegrations(filtered);
-      
+
       const states: Record<string, { apiKey: string; webhookUrl: string }> = {};
       filtered.forEach((item: Integration) => {
         states[item.id] = {
@@ -118,7 +144,7 @@ export const IntegrationsPage: React.FC = () => {
         [field]: value
       }
     }));
-    
+
     if (field === "apiKey") {
       setTestResults(prev => {
         const next = { ...prev };
@@ -126,6 +152,17 @@ export const IntegrationsPage: React.FC = () => {
         return next;
       });
     }
+  };
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    notification.success({
+      message: "Copied to Clipboard",
+      description: "Webhook URL copied successfully.",
+      placement: "bottomRight"
+    });
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   const handleTestConnection = async (id: string) => {
@@ -155,8 +192,8 @@ export const IntegrationsPage: React.FC = () => {
 
       if (resData.success) {
         notification.success({
-          message: "Connection Successful",
-          description: resData.message || `Successfully connected to ${id} API.`,
+          message: "Connection Verified",
+          description: resData.message || `Successfully validated connection to ${id}.`,
           placement: "bottomRight"
         });
       } else {
@@ -170,7 +207,7 @@ export const IntegrationsPage: React.FC = () => {
       console.error(err);
       notification.error({
         message: "Error Testing Connection",
-        description: err.message || "Failed to connect to provider servers.",
+        description: err.message || "Failed to reach provider endpoint.",
         placement: "bottomRight"
       });
     } finally {
@@ -207,16 +244,12 @@ export const IntegrationsPage: React.FC = () => {
       });
 
       notification.success({
-        message: "Integration Saved",
-        description: `Successfully updated ${updated.name} settings.`,
+        message: "Integration Settings Saved",
+        description: `Successfully updated ${updated.name} credentials.`,
         placement: "bottomRight"
       });
     } catch (err: any) {
       console.error(err);
-      setTestResults(prev => ({
-        ...prev,
-        [id]: { success: false, message: err.message || "Failed to save configuration details." }
-      }));
       notification.error({
         message: "Error Saving Settings",
         description: err.message || "Failed to save configuration details.",
@@ -246,7 +279,7 @@ export const IntegrationsPage: React.FC = () => {
       const resData = await response.json();
       notification.success({
         message: "Calls Synchronized",
-        description: resData.message || `Sync finished for ${id}.`,
+        description: resData.message || `Sync completed for ${id}.`,
         placement: "bottomRight"
       });
       fetchIntegrations();
@@ -254,7 +287,7 @@ export const IntegrationsPage: React.FC = () => {
       console.error(err);
       notification.error({
         message: "Call Sync Error",
-        description: err.message || "Failed to trigger call sync.",
+        description: err.message || "Failed to sync provider call records.",
         placement: "bottomRight"
       });
     } finally {
@@ -299,7 +332,7 @@ export const IntegrationsPage: React.FC = () => {
   if (loading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh" }}>
-        <Spin size="large" tip="Loading speech service integrations..." />
+        <Spin size="large" tip="Loading Voice Integration Hub..." />
       </div>
     );
   }
@@ -307,30 +340,65 @@ export const IntegrationsPage: React.FC = () => {
   if (error) {
     return (
       <div style={{ padding: "24px" }}>
-        <Alert message="Error" description={error} type="error" showIcon />
+        <Alert message="Error Loading Integrations" description={error} type="error" showIcon />
       </div>
     );
   }
 
+  const activeCount = integrations.filter(i => i.connected).length;
+
   return (
-    <div style={{ padding: "24px", minHeight: "100vh" }}>
-      <div style={{ marginBottom: "32px" }}>
-        <Title level={2} style={{ margin: 0, fontWeight: 600 }}>Integrations</Title>
-        <Text type="secondary">Connect voice AI agent platforms to sync historical calls, agents, and evaluations</Text>
+    <div style={{ padding: "24px", minHeight: "100vh", background: token.colorBgLayout }}>
+      {/* Header Banner */}
+      <div
+        style={{
+          background: token.colorBgContainer,
+          padding: "24px",
+          borderRadius: "16px",
+          border: `1px solid ${token.colorBorderSecondary}`,
+          marginBottom: "32px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <Title level={2} style={{ margin: 0, fontWeight: 700 }}>
+              Voice Service Integrations
+            </Title>
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              Connect Vapi, Retell, and ElevenLabs to automatically ingest conversations, sync agent profiles, and analyze speech metrics.
+            </Text>
+          </div>
+
+          <Space size="middle">
+            <Tag color="purple" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
+              <ApiOutlined style={{ marginRight: 6 }} />
+              {integrations.length} Supported Providers
+            </Tag>
+            <Tag color="success" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
+              <CheckCircleOutlined style={{ marginRight: 6 }} />
+              {activeCount} Active Connections
+            </Tag>
+          </Space>
+        </div>
       </div>
 
+      {/* Provider Grid */}
       <Row gutter={[24, 24]}>
         {integrations.map((integration) => {
           const info = PROVIDER_INFO[integration.id] || {
             desc: `Connect with ${integration.name} speech evaluations and call transcripts.`,
             color: "#1890ff",
-            webhookDesc: "Specify webhook URL settings inside provider configuration."
+            webhookDesc: "Specify webhook URL settings inside provider configuration.",
+            setupSteps: ["Configure API Key and save settings."]
           };
 
           const testResult = testResults[integration.id];
-          const lastSyncedFormatted = integration.lastSyncedAt 
-            ? new Date(integration.lastSyncedAt).toLocaleString() 
+          const lastSyncedFormatted = integration.lastSyncedAt
+            ? new Date(integration.lastSyncedAt).toLocaleString()
             : null;
+
+          const defaultWebhook = `${window.location.origin.replace(":5173", ":8000")}/api/v1/conversations/webhook/${integration.id}`;
 
           return (
             <Col xs={24} lg={12} key={integration.id}>
@@ -340,35 +408,35 @@ export const IntegrationsPage: React.FC = () => {
                   background: token.colorBgContainer,
                   borderRadius: "16px",
                   border: `1px solid ${token.colorBorderSecondary}`,
-                  boxShadow: token.boxShadowSecondary,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
                   height: "100%"
                 }}
                 bodyStyle={{ padding: "24px", display: "flex", flexDirection: "column", height: "100%" }}
               >
-                {/* Header info */}
+                {/* Provider Header */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
                     <div
                       style={{
-                        width: "42px",
-                        height: "42px",
-                        borderRadius: "10px",
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: "12px",
                         background: `rgba(${parseInt(info.color.slice(1, 3), 16)}, ${parseInt(info.color.slice(3, 5), 16)}, ${parseInt(info.color.slice(5, 7), 16)}, 0.12)`,
                         display: "flex",
                         justifyContent: "center",
                         alignItems: "center",
                         marginRight: "16px",
-                        border: `1px solid ${info.color}33`
+                        border: `1.5px solid ${info.color}44`
                       }}
                     >
-                      <ApiOutlined style={{ fontSize: "20px", color: info.color }} />
+                      <ApiOutlined style={{ fontSize: "24px", color: info.color }} />
                     </div>
                     <div>
-                      <Title level={4} style={{ margin: 0, fontWeight: 600 }}>
+                      <Title level={4} style={{ margin: 0, fontWeight: 700 }}>
                         {integration.name}
                       </Title>
-                      <Text type="secondary" style={{ fontSize: "12px" }}>
-                        Voice Speech Service
+                      <Text type="secondary" style={{ fontSize: "12px", fontWeight: 500 }}>
+                        Voice Telemetry Provider
                       </Text>
                     </div>
                   </div>
@@ -377,8 +445,8 @@ export const IntegrationsPage: React.FC = () => {
                     <Badge
                       status={integration.connected ? "success" : "default"}
                       text={
-                        <span style={{ color: integration.connected ? token.colorSuccess : token.colorTextDescription, fontWeight: 500 }}>
-                          {integration.connected ? "Connected" : "Disconnected"}
+                        <span style={{ color: integration.connected ? token.colorSuccess : token.colorTextDescription, fontWeight: 600 }}>
+                          {integration.connected ? "Active Connection" : "Not Configured"}
                         </span>
                       }
                     />
@@ -392,21 +460,21 @@ export const IntegrationsPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Card Fields Container */}
+                {/* Body Content */}
                 <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: "16px", marginBottom: "24px" }}>
-                  <Paragraph style={{ color: token.colorTextSecondary, fontSize: "14px", margin: 0 }}>
+                  <Paragraph style={{ color: token.colorTextSecondary, fontSize: "13.5px", margin: 0, lineHeight: 1.5 }}>
                     {info.desc}
                   </Paragraph>
 
-                  {/* API Key Form */}
+                  {/* API Key Field */}
                   <div>
-                    <div style={{ marginBottom: "8px" }}>
+                    <div style={{ marginBottom: "6px" }}>
                       <Text strong style={{ fontSize: "13px" }}>
-                        API Key
+                        API Secret Key
                       </Text>
                     </div>
                     <Input.Password
-                      placeholder={`Enter ${integration.name} API Key`}
+                      placeholder={`Enter ${integration.name} Private API Key...`}
                       value={formStates[integration.id]?.apiKey}
                       onChange={(e) => handleInputChange(integration.id, "apiKey", e.target.value)}
                       prefix={<KeyOutlined style={{ color: token.colorTextPlaceholder, marginRight: "8px" }} />}
@@ -415,50 +483,70 @@ export const IntegrationsPage: React.FC = () => {
                     />
                   </div>
 
-                  {/* Webhook URL Input */}
-                  {integration.id === "vapi" && (
-                    <div>
-                      <div style={{ marginBottom: "8px" }}>
-                        <Text strong style={{ fontSize: "13px" }}>
-                          Webhook URL
-                        </Text>
-                      </div>
-                      <Input
-                        placeholder="https://your-domain.com/webhook"
-                        value={formStates[integration.id]?.webhookUrl}
-                        onChange={(e) => handleInputChange(integration.id, "webhookUrl", e.target.value)}
-                        prefix={<LinkOutlined style={{ color: token.colorTextPlaceholder, marginRight: "8px" }} />}
-                        style={{ borderRadius: "8px" }}
-                      />
-                      <Text type="secondary" style={{ fontSize: "11px", display: "block", marginTop: "6px", lineHeight: "1.4" }}>
-                        {info.webhookDesc}
+                  {/* Webhook Endpoint Box */}
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                      <Text strong style={{ fontSize: "13px" }}>
+                        Inbound Webhook Endpoint
                       </Text>
+                      <Button
+                        type="link"
+                        size="small"
+                        icon={copiedId === integration.id ? <CheckOutlined style={{ color: token.colorSuccess }} /> : <CopyOutlined />}
+                        onClick={() => copyToClipboard(formStates[integration.id]?.webhookUrl || defaultWebhook, integration.id)}
+                        style={{ fontSize: 12, padding: 0 }}
+                      >
+                        {copiedId === integration.id ? "Copied" : "Copy Endpoint"}
+                      </Button>
                     </div>
-                  )}
+                    <Input
+                      readOnly
+                      value={formStates[integration.id]?.webhookUrl || defaultWebhook}
+                      prefix={<LinkOutlined style={{ color: token.colorTextPlaceholder, marginRight: "8px" }} />}
+                      style={{ borderRadius: "8px", background: token.colorFillQuaternary, cursor: "pointer" }}
+                      onClick={() => copyToClipboard(formStates[integration.id]?.webhookUrl || defaultWebhook, integration.id)}
+                    />
+                    <Text type="secondary" style={{ fontSize: "11px", display: "block", marginTop: "6px", lineHeight: "1.4" }}>
+                      {info.webhookDesc}
+                    </Text>
+                  </div>
 
-                  {/* Connection Status Alerts */}
+                  {/* Test Connection Result Alert */}
                   {testResult ? (
                     <Alert
-                      message={testResult.success ? "Connection verified and active." : "Connection failed."}
+                      message={testResult.success ? "Connection Verified" : "Authentication Failed"}
                       description={testResult.message}
                       type={testResult.success ? "success" : "error"}
                       showIcon
                       style={{ borderRadius: "8px" }}
                     />
-                  ) : (
-                    integration.connected && (
-                      <Alert
-                        message="Connection Active"
-                        description="API key verified. Ready for automatic and manual call synchronization."
-                        type="success"
-                        showIcon
-                        style={{ borderRadius: "8px" }}
-                      />
-                    )
-                  )}
+                  ) : null}
+
+                  {/* Quick Setup Instructions Accordion */}
+                  <Collapse
+                    ghost
+                    size="small"
+                    items={[
+                      {
+                        key: "setup",
+                        label: (
+                          <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>
+                            <QuestionCircleOutlined style={{ marginRight: 6 }} /> Quick Setup Instructions
+                          </Text>
+                        ),
+                        children: (
+                          <ol style={{ paddingLeft: 20, margin: 0, fontSize: 12, color: token.colorTextSecondary }}>
+                            {info.setupSteps.map((step, idx) => (
+                              <li key={idx} style={{ marginBottom: 4 }}>{step}</li>
+                            ))}
+                          </ol>
+                        )
+                      }
+                    ]}
+                  />
                 </div>
 
-                {/* Actions Grid */}
+                {/* Actions Toolbar */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: "20px" }}>
                   <div style={{ display: "flex", gap: "12px" }}>
                     <Button
@@ -480,7 +568,7 @@ export const IntegrationsPage: React.FC = () => {
                         borderColor: info.color,
                         color: "#fff",
                         borderRadius: "8px",
-                        fontWeight: 500
+                        fontWeight: 600
                       }}
                     >
                       Save Settings
@@ -506,7 +594,7 @@ export const IntegrationsPage: React.FC = () => {
                           borderRadius: "8px",
                           borderColor: info.color,
                           color: info.color,
-                          fontWeight: 500
+                          fontWeight: 600
                         }}
                       >
                         Sync Calls
@@ -522,4 +610,3 @@ export const IntegrationsPage: React.FC = () => {
     </div>
   );
 };
-
