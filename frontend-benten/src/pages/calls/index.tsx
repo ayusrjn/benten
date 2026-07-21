@@ -214,86 +214,147 @@ export const CallsPage: React.FC = () => {
     return token.colorError;
   };
 
+  // Compute summary KPI metrics from current calls
+  const evaluatedCalls = calls.filter(c => c.score !== null && c.score !== undefined);
+  const avgHealth = evaluatedCalls.length > 0
+    ? Math.round(evaluatedCalls.reduce((acc, c) => acc + (c.score || 0), 0) / evaluatedCalls.length)
+    : null;
+  
+  const evaluatedMos = calls.filter(c => c.rawMetrics?.mos_score !== undefined && c.rawMetrics?.mos_score !== null);
+  const avgMos = evaluatedMos.length > 0
+    ? (evaluatedMos.reduce((acc, c) => acc + (c.rawMetrics.mos_score || 0), 0) / evaluatedMos.length).toFixed(2)
+    : null;
+
+  const evaluatedLatency = calls.filter(c => c.latencyMs !== null && c.latencyMs !== undefined);
+  const avgLatency = evaluatedLatency.length > 0
+    ? Math.round(evaluatedLatency.reduce((acc, c) => acc + (c.latencyMs || 0), 0) / evaluatedLatency.length)
+    : null;
+
+  const activeFilterCount = (providerFilter !== "all" ? 1 : 0) +
+    (statusFilter !== "all" ? 1 : 0) +
+    (gradeFilter !== "all" ? 1 : 0) +
+    (durationFilter !== "all" ? 1 : 0) +
+    (agentFilter !== "all" ? 1 : 0);
+
+  const resetFilters = () => {
+    setSearchQuery("");
+    setProviderFilter("all");
+    setStatusFilter("all");
+    setGradeFilter("all");
+    setDurationFilter("all");
+    setAgentFilter("all");
+  };
+
+  // Streamlined, uncluttered column definition
   const columns = [
     {
-      title: "Provider",
-      dataIndex: "provider",
-      key: "provider",
-      width: 130,
-      render: (provider: string) => {
-        const pKey = (provider || "vapi").toLowerCase();
-        const color = PROVIDER_COLORS[pKey] || "#1890ff";
+      title: "Agent & Call Info",
+      key: "agentInfo",
+      render: (_: any, record: CallDetail) => {
+        const pKey = (record.provider || "vapi").toLowerCase();
+        const providerColor = PROVIDER_COLORS[pKey] || "#1890ff";
         return (
-          <Tag
-            color={color}
-            style={{
-              borderRadius: 6,
-              fontWeight: 600,
-              fontSize: 11,
-              textTransform: "uppercase",
-              padding: "2px 8px"
-            }}
-          >
-            {provider || "Vapi"}
-          </Tag>
+          <Space size="middle" align="center">
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: `${providerColor}15`,
+                border: `1px solid ${providerColor}30`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: providerColor,
+                fontWeight: 700,
+                fontSize: 14
+              }}
+            >
+              {(record.agentName || "A")[0].toUpperCase()}
+            </div>
+            <div>
+              <Space size={6} align="center">
+                <Text strong style={{ fontSize: 14, color: token.colorTextHeading }}>
+                  {record.agentName || "Voice Agent"}
+                </Text>
+                <Tag
+                  color={providerColor}
+                  style={{
+                    borderRadius: 4,
+                    fontWeight: 600,
+                    fontSize: 10,
+                    textTransform: "uppercase",
+                    padding: "1px 6px",
+                    lineHeight: "16px"
+                  }}
+                >
+                  {record.provider || "Vapi"}
+                </Tag>
+              </Space>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>
+                {record.customer && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Customer: <span style={{ color: token.colorText }}>{record.customer}</span>
+                  </Text>
+                )}
+                <Space size={4}>
+                  {record.hasRecording && (
+                    <Tooltip title="Audio Recording Available">
+                      <SoundOutlined style={{ fontSize: 12, color: token.colorInfo }} />
+                    </Tooltip>
+                  )}
+                  {record.hasTranscript && (
+                    <Tooltip title="Transcript Available">
+                      <FileTextOutlined style={{ fontSize: 12, color: token.colorPrimary }} />
+                    </Tooltip>
+                  )}
+                </Space>
+              </div>
+            </div>
+          </Space>
         );
       }
     },
     {
-      title: "Agent",
-      dataIndex: "agentName",
-      key: "agentName",
-      render: (name: string, record: CallDetail) => (
-        <div>
-          <Text strong style={{ fontSize: 14 }}>{name || "Voice Agent"}</Text>
-          {record.customer ? (
-            <div style={{ fontSize: 11, color: token.colorTextDescription }}>
-              Customer: {record.customer}
+      title: "Status & Duration",
+      key: "statusDuration",
+      width: 160,
+      render: (_: any, record: CallDetail) => {
+        const s = record.status || "Completed";
+        let badgeStatus: any = "success";
+        if (s.toLowerCase() === "processing") badgeStatus = "processing";
+        if (s.toLowerCase() === "failed") badgeStatus = "error";
+        return (
+          <div>
+            <Badge status={badgeStatus} text={<Text style={{ fontSize: 13, fontWeight: 500 }}>{s}</Text>} />
+            <div style={{ fontSize: 11, color: token.colorTextDescription, fontFamily: "monospace", marginTop: 2 }}>
+              <ClockCircleOutlined style={{ marginRight: 4 }} />
+              {record.duration || "00:00"}
             </div>
-          ) : null}
-        </div>
-      )
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
-      width: 120,
-      render: (status: string) => {
-        const s = status || "Completed";
-        let color = "success";
-        if (s.toLowerCase() === "processing") color = "processing";
-        if (s.toLowerCase() === "failed") color = "error";
-        if (s.toLowerCase() === "cancelled") color = "default";
-        return <Badge status={color as any} text={<Text style={{ fontSize: 13 }}>{s}</Text>} />;
+          </div>
+        );
       }
     },
     {
-      title: "Duration",
-      dataIndex: "duration",
-      key: "duration",
-      width: 110,
-      render: (dur: string) => <Text style={{ fontSize: 13, fontFamily: "monospace" }}>{dur || "—"}</Text>
-    },
-    {
-      title: "Overall Score",
-      dataIndex: "score",
-      key: "score",
+      title: "Health Score",
+      key: "healthScore",
       width: 150,
-      render: (score: number | null, record: CallDetail) => {
-        if (score === null || score === undefined) {
+      render: (_: any, record: CallDetail) => {
+        if (record.score === null || record.score === undefined) {
           return (
-            <Tag color="default" style={{ fontSize: 11 }}>
-              Not evaluated
+            <Tag color="default" style={{ fontSize: 11, borderRadius: 4 }}>
+              Pending Evaluation
             </Tag>
           );
         }
-        const color = getScoreColor(score);
+        const color = getScoreColor(record.score);
         return (
           <Space size={6} align="center">
-            <Text style={{ fontWeight: 700, fontSize: 14, color }}>{score} / 100</Text>
+            <Text style={{ fontWeight: 700, fontSize: 15, color }}>{record.score}</Text>
+            <Text type="secondary" style={{ fontSize: 11 }}>/ 100</Text>
             {record.grade ? (
-              <Tag color={color} style={{ fontWeight: 700, borderRadius: 4, fontSize: 11 }}>
+              <Tag color={color} style={{ fontWeight: 700, borderRadius: 4, fontSize: 11, padding: "0 6px" }}>
                 {record.grade}
               </Tag>
             ) : null}
@@ -302,52 +363,84 @@ export const CallsPage: React.FC = () => {
       }
     },
     {
-      title: "Call Time",
+      title: "Voice Quality (NISQA)",
+      key: "voiceQuality",
+      width: 170,
+      render: (_: any, record: CallDetail) => {
+        const rawMos = record.rawMetrics?.mos_score;
+        const vq = record.voiceQuality;
+        if (rawMos !== undefined && rawMos !== null) {
+          const color = rawMos >= 4.0 ? token.colorSuccess : rawMos >= 3.0 ? token.colorWarning : token.colorError;
+          return (
+            <Tooltip title={`NISQA Mean Opinion Score: ${rawMos} / 5.0`}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Tag
+                  style={{
+                    color,
+                    background: `${color}15`,
+                    borderColor: `${color}30`,
+                    fontWeight: 700,
+                    borderRadius: 6,
+                    fontSize: 12,
+                    margin: 0
+                  }}
+                >
+                  {rawMos.toFixed(2)} MOS
+                </Tag>
+              </div>
+            </Tooltip>
+          );
+        }
+        if (vq !== undefined && vq !== null) {
+          return (
+            <Tag color={vq >= 80 ? "success" : "warning"} style={{ borderRadius: 6, fontWeight: 600, margin: 0 }}>
+              {vq}% Quality
+            </Tag>
+          );
+        }
+        return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+      }
+    },
+    {
+      title: "Emotion",
+      dataIndex: "emotion",
+      key: "emotion",
+      width: 140,
+      render: (emotion: string | null) => {
+        if (!emotion) return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+        const emoLower = emotion.toLowerCase();
+        let color = "blue";
+        if (["joy", "optimism", "admiration", "approval", "caring", "excitement"].includes(emoLower)) color = "green";
+        if (["anger", "annoyance", "disapproval", "disgust", "frustration"].includes(emoLower)) color = "volcano";
+        if (["sadness", "disappointment", "grief", "remorse"].includes(emoLower)) color = "magenta";
+        return (
+          <Tag color={color} style={{ textTransform: "capitalize", borderRadius: 6, fontWeight: 500, fontSize: 11, margin: 0 }}>
+            {emotion}
+          </Tag>
+        );
+      }
+    },
+    {
+      title: "Call Date",
       dataIndex: "date",
       key: "date",
-      width: 150,
+      width: 160,
       render: (dateStr: string) => (
-        <Tooltip title={dateStr}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            <ClockCircleOutlined style={{ marginRight: 4 }} />
-            {dateStr}
-          </Text>
-        </Tooltip>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {dateStr}
+        </Text>
       )
     },
     {
-      title: "Recording",
-      dataIndex: "hasRecording",
-      key: "hasRecording",
-      width: 120,
-      render: (hasRec: boolean) =>
-        hasRec ? (
-          <Tag color="cyan" icon={<SoundOutlined />}>Available</Tag>
-        ) : (
-          <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
-        )
-    },
-    {
-      title: "Transcript",
-      dataIndex: "hasTranscript",
-      key: "hasTranscript",
-      width: 120,
-      render: (hasTrans: boolean) =>
-        hasTrans ? (
-          <Tag color="blue" icon={<FileTextOutlined />}>✓ Transcript</Tag>
-        ) : (
-          <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
-        )
-    },
-    {
-      title: "Action",
+      title: "",
       key: "action",
-      width: 80,
+      width: 60,
       align: "center" as const,
       render: (_: any, record: CallDetail) => (
         <Button
           type="text"
-          icon={<RightOutlined />}
+          shape="circle"
+          icon={<RightOutlined style={{ fontSize: 12, color: token.colorTextDescription }} />}
           onClick={() => handleOpenCallDetail(record.id)}
         />
       )
@@ -355,12 +448,12 @@ export const CallsPage: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: "24px", minHeight: "100vh" }}>
-      {/* Header & Main Toolbar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+    <div style={{ padding: "28px", minHeight: "100vh", maxWidth: 1400, margin: "0 auto" }}>
+      {/* Header & Sync */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
-          <Title level={2} style={{ margin: 0, fontWeight: 600 }}>Calls</Title>
-          <Text type="secondary">Browse, filter, inspect, and evaluate voice AI agent conversations</Text>
+          <Title level={2} style={{ margin: 0, fontWeight: 700, letterSpacing: "-0.5px" }}>Conversations</Title>
+          <Text type="secondary" style={{ fontSize: 14 }}>Real-time voice agent analytics, NISQA quality scores, and turn diagnostics</Text>
         </div>
 
         <Button
@@ -368,13 +461,44 @@ export const CallsPage: React.FC = () => {
           icon={<CloudDownloadOutlined />}
           onClick={handleSyncAllCalls}
           loading={syncing}
-          style={{ borderRadius: 8, fontWeight: 500 }}
+          style={{ borderRadius: 10, fontWeight: 600, height: 40, padding: "0 20px" }}
         >
           Sync Calls
         </Button>
       </div>
 
-      {/* Filter Bar */}
+      {/* KPI Overview Summary Bar */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}>
+        <Card size="small" style={{ borderRadius: 12, border: `1px solid ${token.colorBorderSecondary}` }}>
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>Total Calls</Text>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: token.colorTextHeading }}>
+            {pagination.total || calls.length}
+          </div>
+        </Card>
+
+        <Card size="small" style={{ borderRadius: 12, border: `1px solid ${token.colorBorderSecondary}` }}>
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>Avg Health Score</Text>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: avgHealth ? getScoreColor(avgHealth) : token.colorTextHeading }}>
+            {avgHealth ? `${avgHealth} / 100` : "—"}
+          </div>
+        </Card>
+
+        <Card size="small" style={{ borderRadius: 12, border: `1px solid ${token.colorBorderSecondary}` }}>
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>Avg NISQA MOS</Text>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: token.colorSuccess }}>
+            {avgMos ? `${avgMos} MOS` : "—"}
+          </div>
+        </Card>
+
+        <Card size="small" style={{ borderRadius: 12, border: `1px solid ${token.colorBorderSecondary}` }}>
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>Avg Latency</Text>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: token.colorInfo }}>
+            {avgLatency ? `${avgLatency} ms` : "—"}
+          </div>
+        </Card>
+      </div>
+
+      {/* Streamlined Filter Bar */}
       <Card
         bordered={false}
         style={{
@@ -383,21 +507,21 @@ export const CallsPage: React.FC = () => {
           background: token.colorBgContainer,
           border: `1px solid ${token.colorBorderSecondary}`
         }}
-        bodyStyle={{ padding: "16px 20px" }}
+        bodyStyle={{ padding: "14px 18px" }}
       >
-        <Space wrap size="middle" style={{ width: "100%", justifyContent: "space-between" }}>
-          {/* Search Box */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
+          {/* Wide Search Bar */}
           <Input
-            placeholder="Search agent, call ID, transcript..."
+            placeholder="Search agent, customer name, transcript..."
             prefix={<SearchOutlined style={{ color: token.colorTextPlaceholder }} />}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: 280, borderRadius: 8 }}
+            style={{ width: 320, borderRadius: 8 }}
             allowClear
           />
 
+          {/* Clean Dropdown Filters */}
           <Space wrap size="small">
-            {/* Provider Filter */}
             <Select value={providerFilter} onChange={setProviderFilter} style={{ width: 130, borderRadius: 8 }}>
               <Option value="all">All Providers</Option>
               <Option value="vapi">Vapi</Option>
@@ -405,15 +529,13 @@ export const CallsPage: React.FC = () => {
               <Option value="elevenlabs">ElevenLabs</Option>
             </Select>
 
-            {/* Agent Filter */}
-            <Select value={agentFilter} onChange={setAgentFilter} style={{ width: 150, borderRadius: 8 }}>
+            <Select value={agentFilter} onChange={setAgentFilter} style={{ width: 140, borderRadius: 8 }}>
               <Option value="all">All Agents</Option>
               {agentsList.map(a => (
                 <Option key={a.id} value={a.id}>{a.name}</Option>
               ))}
             </Select>
 
-            {/* Status Filter */}
             <Select value={statusFilter} onChange={setStatusFilter} style={{ width: 130, borderRadius: 8 }}>
               <Option value="all">All Statuses</Option>
               <Option value="completed">Completed</Option>
@@ -421,34 +543,39 @@ export const CallsPage: React.FC = () => {
               <Option value="failed">Failed</Option>
             </Select>
 
-            {/* Grade Filter */}
-            <Select value={gradeFilter} onChange={setGradeFilter} style={{ width: 130, borderRadius: 8 }}>
+            <Select value={gradeFilter} onChange={setGradeFilter} style={{ width: 120, borderRadius: 8 }}>
               <Option value="all">All Grades</Option>
-              <Option value="A">90+ (Grade A/A+)</Option>
-              <Option value="B">80-89 (Grade B)</Option>
-              <Option value="C">70-79 (Grade C)</Option>
-              <Option value="F">Below 70 (Grade F)</Option>
+              <Option value="A">Grade A (90+)</Option>
+              <Option value="B">Grade B (80-89)</Option>
+              <Option value="C">Grade C (70-79)</Option>
+              <Option value="F">Grade F (&lt;70)</Option>
             </Select>
 
-            {/* Duration Filter */}
             <Select value={durationFilter} onChange={setDurationFilter} style={{ width: 130, borderRadius: 8 }}>
               <Option value="all">All Durations</Option>
-              <Option value="lt30">&lt; 30 sec</Option>
-              <Option value="30to120">30s - 2 min</Option>
-              <Option value="2mto5m">2 - 5 min</Option>
-              <Option value="gt5m">5+ min</Option>
+              <Option value="lt30">&lt; 30s</Option>
+              <Option value="30to120">30s - 2m</Option>
+              <Option value="2mto5m">2 - 5m</Option>
+              <Option value="gt5m">5m+</Option>
             </Select>
+
+            {activeFilterCount > 0 && (
+              <Button type="link" onClick={resetFilters} style={{ fontSize: 12, padding: "0 6px" }}>
+                Clear ({activeFilterCount})
+              </Button>
+            )}
           </Space>
-        </Space>
+        </div>
       </Card>
 
-      {/* Main Calls Table */}
+      {/* Main Table */}
       <Card
         bordered={false}
         style={{
           borderRadius: 14,
           background: token.colorBgContainer,
-          border: `1px solid ${token.colorBorderSecondary}`
+          border: `1px solid ${token.colorBorderSecondary}`,
+          overflow: "hidden"
         }}
         bodyStyle={{ padding: 0 }}
       >
@@ -461,12 +588,12 @@ export const CallsPage: React.FC = () => {
             <Skeleton active paragraph={{ rows: 8 }} />
           </div>
         ) : calls.length === 0 ? (
-          <div style={{ padding: "48px 24px", textAlign: "center" }}>
+          <div style={{ padding: "56px 24px", textAlign: "center" }}>
             <Empty
               description={
                 <span>
-                  <Title level={4} style={{ margin: "8px 0 4px" }}>No Calls Found</Title>
-                  <Text type="secondary">Connect a provider and synchronize calls to start inspecting evaluations.</Text>
+                  <Title level={4} style={{ margin: "8px 0 4px" }}>No Conversations Found</Title>
+                  <Text type="secondary">Adjust filters or synchronize call history to start analyzing evaluations.</Text>
                 </span>
               }
             >
@@ -520,3 +647,4 @@ export const CallsPage: React.FC = () => {
     </div>
   );
 };
+

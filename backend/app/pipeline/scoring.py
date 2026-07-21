@@ -27,12 +27,13 @@ def preload_all_models():
     """
     from .vad import preload_vad
     from .diarizer import preload_diarizer
-    from .models import preload_sentiment
+    from .models import preload_sentiment, preload_nisqa
 
     logger.info("Preloading all ML models for worker process...")
     preload_vad()
     preload_diarizer()
     preload_sentiment()
+    preload_nisqa()
     logger.info("All ML models preloaded successfully.")
 
 

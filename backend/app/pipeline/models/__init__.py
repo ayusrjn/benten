@@ -10,6 +10,32 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 _sentiment_pipeline = None
+_nisqa_model = None
+
+try:
+    import torch
+    from torchmetrics.audio import NonIntrusiveSpeechQualityAssessment
+except ImportError:
+    torch = None
+    NonIntrusiveSpeechQualityAssessment = None
+
+
+def get_nisqa_model():
+    """Lazy-loads singleton PyTorch TorchMetrics NISQA model."""
+    global _nisqa_model
+    if _nisqa_model is None and NonIntrusiveSpeechQualityAssessment is not None:
+        try:
+            logger.info("Loading NISQA speech quality assessment model")
+            _nisqa_model = NonIntrusiveSpeechQualityAssessment(fs=16000)
+        except Exception as e:
+            logger.error(f"Failed to load NISQA model: {e}")
+    return _nisqa_model
+
+
+def preload_nisqa():
+    """Eagerly initialize the NISQA model (called at worker startup)."""
+    get_nisqa_model()
+
 
 def get_sentiment_pipeline():
     global _sentiment_pipeline
@@ -56,9 +82,32 @@ def score_sentiment_roberta(transcript_text: str) -> Dict[str, float]:
 
 def score_voice_quality_nisqa(audio_np: np.ndarray, sample_rate: int = 16000) -> float:
     """
-    Evaluates speech quality using NISQA-light to output Mean Opinion Score (MOS) between 1.0 and 5.0.
-    Currently mocked until the official NISQA PyTorch module is integrated.
+    Evaluates speech quality using NISQA to output Mean Opinion Score (MOS) between 1.0 and 5.0.
     """
-    logger.info("Running NISQA voice quality analysis (Mocked)")
-    # Mocking for now as per user request
-    return 4.2
+    logger.info("Running NISQA voice quality analysis")
+    nisqa = get_nisqa_model()
+    if nisqa is None or torch is None:
+        logger.warning("NISQA model not available, using default fallback score (4.0)")
+        return 4.0
+
+    try:
+        # Ensure 1D audio waveform
+        if audio_np.ndim > 1:
+            audio_np = np.mean(audio_np, axis=1)
+
+        # Convert to 2D tensor (batch_size=1, time_steps)
+        audio_tensor = torch.from_numpy(audio_np).float()
+        if audio_tensor.ndim == 1:
+            audio_tensor = audio_tensor.unsqueeze(0)
+
+        with torch.no_grad():
+            res = nisqa(audio_tensor)
+            # res[0] is overall predicted MOS
+            mos_raw = float(res[0].item() if hasattr(res[0], 'item') else res[0])
+            mos_score = max(1.0, min(5.0, round(mos_raw, 2)))
+            logger.info(f"NISQA MOS score calculated: {mos_score}")
+            return mos_score
+    except Exception as e:
+        logger.error(f"Error during NISQA voice quality evaluation: {e}")
+        return 4.0
+
