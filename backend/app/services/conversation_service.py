@@ -160,3 +160,98 @@ class ConversationService:
 
         conversations = query.all()
         return conversations, total
+
+    @staticmethod
+    def map_conversation_to_response(db: Session, c: Conversation) -> Any:
+        from app.schemas.conversation import ConversationResponse, SpeechSegmentResponse
+        agent_name = c.agent.name if c.agent else "Unknown Agent"
+
+        # Use pre-loaded speech_segments if available via joinedload (avoids N+1 query)
+        segments = c.speech_segments if hasattr(c, "speech_segments") and c.speech_segments is not None else db.query(SpeechSegment).filter(
+            SpeechSegment.conversation_id == c.id
+        ).order_by(SpeechSegment.start_sec.asc()).all()
+
+        sorted_segments = sorted(segments, key=lambda s: float(s.start_sec))
+
+        segment_responses = [
+            SpeechSegmentResponse(
+                speaker=s.speaker,
+                start=float(s.start_sec),
+                end=float(s.end_sec),
+                text=s.text
+            ) for s in sorted_segments
+        ]
+
+        date_str = c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else ""
+
+        # Real detected issues calculation based strictly on metrics
+        detected_issues = []
+        if c.latency_ms and c.latency_ms > 1000:
+            detected_issues.append(f"Average latency exceeded {c.latency_ms}ms")
+        if c.dead_air_percent and c.dead_air_percent > 10.0:
+            detected_issues.append(f"Dead air exceeded 10% ({c.dead_air_percent}%)")
+        if c.interruptions and c.interruptions > 4:
+            detected_issues.append(f"Frequent user interruptions count: {c.interruptions}")
+        if c.primary_emotion in ["frustrated", "angry"]:
+            detected_issues.append(f"User exhibited frustration markers")
+
+        raw_meta = c.raw_metrics_json or {}
+        emotion_timeline = raw_meta.get("emotion_timeline", [])
+
+        interruption_details = raw_meta.get("interruption_details")
+        if not interruption_details and sorted_segments:
+            from app.pipeline.extractors import calculate_detailed_interruptions
+            seg_dicts = [
+                {"start": float(s.start_sec), "end": float(s.end_sec), "role": s.speaker}
+                for s in sorted_segments
+            ]
+            interruption_details = calculate_detailed_interruptions(seg_dicts, float(c.duration_sec or 0))
+
+        if interruption_details and "interruption_details" not in raw_meta:
+            raw_meta = {**raw_meta, "interruption_details": interruption_details}
+
+        cust_val = (
+            raw_meta.get("provider_metadata", {}).get("customer") or 
+            raw_meta.get("customer") or 
+            None
+        )
+
+        prov_val = c.provider or raw_meta.get("provider") or "vapi"
+        ext_id_val = c.external_id or raw_meta.get("provider_call_id") or str(c.id)
+
+        audio_url_val = c.audio_url
+        if audio_url_val and audio_url_val.startswith("/static/"):
+            audio_url_val = f"http://localhost:8000{audio_url_val}"
+
+        return ConversationResponse(
+            id=c.id,
+            agentId=c.agent_id,
+            agentName=agent_name,
+            projectId=c.project_id,
+            provider=prov_val,
+            externalId=ext_id_val,
+            score=c.health_score,
+            grade=calculate_grade(c.health_score),
+            duration=format_duration(c.duration_sec or 0),
+            durationSec=c.duration_sec or 0,
+            status=c.status or "Completed",
+            date=date_str,
+            startedAt=c.started_at.isoformat() if c.started_at else None,
+            endedAt=c.ended_at.isoformat() if c.ended_at else None,
+            cost=float(c.cost) if c.cost is not None else None,
+            audioUrl=audio_url_val,
+            latencyMs=c.latency_ms,
+            interruptions=c.interruptions,
+            deadAirPercent=float(c.dead_air_percent) if c.dead_air_percent is not None else None,
+            speechRateWpm=c.speech_rate_wpm,
+            emotion=c.primary_emotion,
+            voiceQuality=c.voice_quality,
+            customer=cust_val,
+            hasRecording=bool(c.audio_url),
+            hasTranscript=len(sorted_segments) > 0,
+            emotionTimeline=emotion_timeline,
+            detectedIssues=detected_issues,
+            segments=segment_responses,
+            interruptionDetails=interruption_details,
+            rawMetrics=raw_meta
+        )

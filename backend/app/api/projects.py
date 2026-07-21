@@ -1,7 +1,6 @@
 from typing import List, Optional
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -13,25 +12,9 @@ from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.organization import Member
 from app.services.project_service import ProjectService
+from app.schemas import ProjectResponse, ProjectCreate, ProjectUpdate
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
-
-
-class ProjectResponse(BaseModel):
-    id: uuid.UUID
-    name: str
-    agentsCount: int
-    conversationsCount: int
-    avgHealth: int
-
-    class Config:
-        from_attributes = True
-
-class ProjectCreate(BaseModel):
-    name: str
-
-class ProjectUpdate(BaseModel):
-    name: str
 
 @router.get("", response_model=List[ProjectResponse])
 def list_projects(

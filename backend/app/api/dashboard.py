@@ -1,7 +1,6 @@
 from typing import List, Optional
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -12,26 +11,10 @@ from app.models.project import Project
 from app.models.conversation import Conversation
 from app.models.alert import Alert
 from app.models.organization import Member
-from app.api.integrations import get_or_create_user_project
+from app.services.project_service import ProjectService
+from app.schemas import DashboardAlertResponse, DashboardMetricsResponse
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
-
-class DashboardAlertResponse(BaseModel):
-    id: uuid.UUID
-    title: str
-    desc: str
-    type: str
-
-class DashboardMetricsResponse(BaseModel):
-    conversationsCount: int
-    latencyAvg: int
-    deadAirAvg: float
-    interruptionsCount: int
-    voiceQualityAvg: int
-    avgDurationSec: int
-    latencyTrend: List[int]
-    volumeTrend: List[int]
-    activeAlerts: List[DashboardAlertResponse]
 
 @router.get("/metrics", response_model=DashboardMetricsResponse)
 def get_dashboard_metrics(
@@ -39,7 +22,7 @@ def get_dashboard_metrics(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    project = get_or_create_user_project(db, current_user)
+    project = ProjectService.get_or_create_user_project(db, current_user)
     active_project_id = projectId or project.id
     
     member = db.query(Member).filter(Member.email == current_user.email).first()
@@ -88,11 +71,7 @@ def get_dashboard_metrics(
         
     # Volume trend fallback or mock values
     volume_trend = [180, 220, 240, 210, 230, 195, 241, 260, 250, 270]
-    if total_convs > 10:
-        # We can construct a simple distribution of conversations over recent days or order counts
-        # But a standard nice volume sequence is fine for dev environment
-        pass
-        
+    
     # Active alerts
     active_alerts_db = db.query(Alert).filter(
         Alert.project_id == active_project_id,
@@ -117,11 +96,6 @@ def get_dashboard_metrics(
             desc=desc,
             type=alert_type
         ))
-        
-    if not active_alerts:
-        # Provide fallback alerts to show on empty dashboard
-        # Let's see: we can generate a default warning alert for ElevenLabs/Vapi if no actual db alerts exist
-        pass
         
     return DashboardMetricsResponse(
         conversationsCount=total_convs or 2341, # Fallback to mock value if database is fresh and unseeded

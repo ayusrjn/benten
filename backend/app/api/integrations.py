@@ -1,7 +1,6 @@
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -11,41 +10,20 @@ from app.models.project import Project
 from app.models.integration import Integration
 from app.services.project_service import ProjectService, PROVIDER_KEY_TO_NAME, PROVIDER_NAME_TO_KEY
 from app.services.integration_service import IntegrationService
+from app.schemas import (
+    IntegrationResponse,
+    IntegrationUpdate,
+    TestConnectionRequest,
+    TestConnectionResponse,
+    SyncAgentsResponse,
+    SyncCallsResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/integrations", tags=["Integrations"])
 
 
-class IntegrationResponse(BaseModel):
-    id: str  # lowercase provider key
-    name: str  # e.g., 'Vapi'
-    connected: bool
-    apiKey: str
-    webhookUrl: Optional[str] = None
-    config: Optional[dict] = None
-    lastSyncedAt: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
-class IntegrationUpdate(BaseModel):
-    apiKey: Optional[str] = None
-    webhookUrl: Optional[str] = None
-
-
-# Backward compatibility helper functions
-def get_or_create_user_project(db: Session, user: User) -> Project:
-    return ProjectService.get_or_create_user_project(db, user)
-
-
-def verify_api_key(provider_id: str, api_key: str) -> tuple[bool, str]:
-    return IntegrationService.verify_api_key(provider_id, api_key)
-
-
-def sync_agents_for_integration(db: Session, project_id, provider: str, api_key: str):
-    return IntegrationService.sync_agents(db, project_id, provider, api_key)
 
 
 @router.get("", response_model=List[IntegrationResponse])
@@ -177,13 +155,7 @@ def update_integration(
     )
 
 
-class TestConnectionRequest(BaseModel):
-    apiKey: str
 
-
-class TestConnectionResponse(BaseModel):
-    success: bool
-    message: str
 
 
 @router.post("/{id}/test", response_model=TestConnectionResponse)
@@ -217,10 +189,7 @@ def test_integration_connection(
     return TestConnectionResponse(success=success, message=msg)
 
 
-class SyncAgentsResponse(BaseModel):
-    success: bool
-    count: int
-    message: str
+
 
 
 @router.post("/{id}/sync-agents", response_model=SyncAgentsResponse)
@@ -251,12 +220,7 @@ def sync_integration_agents_route(
     )
 
 
-class SyncCallsResponse(BaseModel):
-    success: bool
-    total: int
-    imported: int
-    skipped: int
-    message: str
+
 
 
 @router.post("/{id}/sync-calls", response_model=SyncCallsResponse)

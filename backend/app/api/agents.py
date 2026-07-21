@@ -1,9 +1,6 @@
-from datetime import datetime
-from typing import List, Optional, Dict, Any
 import uuid
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -11,124 +8,19 @@ from app.api.security import get_current_active_user
 from app.models.user import User
 from app.models.project import Project
 from app.models.agent import Agent
-from app.models.conversation import Conversation
 from app.models.integration import Integration
 from app.models.organization import Member
 from app.services.project_service import ProjectService, PROVIDER_NAME_TO_KEY
 from app.services.integration_service import IntegrationService
+from app.services.agent_service import AgentService
+from app.schemas import (
+    AgentResponse,
+    AgentCreate,
+    AgentUpdate,
+    GlobalSyncAgentsResponse,
+)
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
-
-
-class AgentResponse(BaseModel):
-    id: uuid.UUID
-    projectId: uuid.UUID
-    name: str
-    provider: str
-    externalId: Optional[str] = None
-    description: Optional[str] = None
-    lastSyncedAt: Optional[str] = None
-    rawMetadata: Optional[Dict[str, Any]] = None
-    conversationsCount: int
-    healthScore: int
-    latencyTrend: List[int]
-    deadAirTrend: List[float]
-    interruptionsTrend: List[int]
-    emotionTrend: List[int]
-    topProblems: List[str]
-
-    class Config:
-        from_attributes = True
-
-
-class AgentCreate(BaseModel):
-    projectId: Optional[uuid.UUID] = None
-    name: str
-    provider: str
-    externalId: Optional[str] = None
-    description: Optional[str] = None
-
-
-class AgentUpdate(BaseModel):
-    name: Optional[str] = None
-    provider: Optional[str] = None
-    description: Optional[str] = None
-
-
-def get_agent_metrics(db: Session, agent: Agent) -> dict:
-    convs = db.query(Conversation).filter(
-        Conversation.agent_id == agent.id,
-        Conversation.status == "Completed"
-    ).order_by(Conversation.created_at.desc()).limit(7).all()
-    
-    convs.reverse()
-    conversations_count = db.query(Conversation).filter(Conversation.agent_id == agent.id).count()
-    
-    avg_health = db.query(func.avg(Conversation.health_score)).filter(
-        Conversation.agent_id == agent.id,
-        Conversation.status == "Completed"
-    ).scalar()
-    health_score = int(round(avg_health)) if avg_health is not None else 100
-    
-    latency_trend = [c.latency_ms for c in convs]
-    dead_air_trend = [float(c.dead_air_percent) for c in convs]
-    interruptions_trend = [c.interruptions for c in convs]
-    emotion_trend = [c.health_score for c in convs]
-    
-    top_problems = []
-    if convs:
-        high_latency_calls = [c for c in convs if c.latency_ms and c.latency_ms > 800]
-        if high_latency_calls:
-            max_lat = max(c.latency_ms for c in high_latency_calls)
-            top_problems.append(f"Turn latency spike ({max_lat}ms detected)")
-            
-        high_dead_air_calls = [c for c in convs if c.dead_air_percent and float(c.dead_air_percent) > 5.0]
-        if high_dead_air_calls:
-            max_da = max(float(c.dead_air_percent) for c in high_dead_air_calls)
-            top_problems.append(f"Elevated dead air ({max_da:.1f}% call duration)")
-            
-        high_interr_calls = [c for c in convs if c.interruptions and c.interruptions > 3]
-        if high_interr_calls:
-            max_int = max(c.interruptions for c in high_interr_calls)
-            top_problems.append(f"Frequent user barge-ins ({max_int} overlaps)")
-            
-        low_health_calls = [c for c in convs if c.health_score and c.health_score < 70]
-        if low_health_calls:
-            min_hs = min(c.health_score for c in low_health_calls)
-            top_problems.append(f"Quality degraded on recent calls ({min_hs}/100)")
-            
-    return {
-        "conversationsCount": conversations_count,
-        "healthScore": health_score,
-        "latencyTrend": latency_trend,
-        "deadAirTrend": dead_air_trend,
-        "interruptionsTrend": interruptions_trend,
-        "emotionTrend": emotion_trend,
-        "topProblems": top_problems
-    }
-
-
-def build_agent_response(db: Session, a: Agent) -> AgentResponse:
-    metrics = get_agent_metrics(db, a)
-    last_synced_str = a.last_synced_at.isoformat() if a.last_synced_at else None
-    return AgentResponse(
-        id=a.id,
-        projectId=a.project_id,
-        name=a.name,
-        provider=a.provider,
-        externalId=a.external_id,
-        description=a.description,
-        lastSyncedAt=last_synced_str,
-        rawMetadata=a.raw_metadata,
-        conversationsCount=metrics["conversationsCount"],
-        healthScore=metrics["healthScore"],
-        latencyTrend=metrics["latencyTrend"],
-        deadAirTrend=metrics["deadAirTrend"],
-        interruptionsTrend=metrics["interruptionsTrend"],
-        emotionTrend=metrics["emotionTrend"],
-        topProblems=metrics["topProblems"]
-    )
-
 
 @router.get("", response_model=List[AgentResponse])
 def list_agents(
@@ -168,13 +60,7 @@ def list_agents(
         query = query.offset(_start).limit(_end - _start)
         
     agents = query.all()
-    return [build_agent_response(db, a) for a in agents]
-
-
-class GlobalSyncAgentsResponse(BaseModel):
-    success: bool
-    totalSynced: int
-    message: str
+    return AgentService.build_agents_response_batch(db, agents)
 
 
 @router.post("/sync", response_model=GlobalSyncAgentsResponse)
@@ -229,7 +115,7 @@ def get_agent(
     if not a:
         raise HTTPException(status_code=404, detail="Agent not found")
         
-    return build_agent_response(db, a)
+    return AgentService.build_agent_response(db, a)
 
 
 @router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
@@ -257,7 +143,7 @@ def create_agent(
     db.commit()
     db.refresh(new_agent)
     
-    return build_agent_response(db, new_agent)
+    return AgentService.build_agent_response(db, new_agent)
 
 
 @router.put("/{id}", response_model=AgentResponse)
@@ -288,7 +174,7 @@ def update_agent(
     db.commit()
     db.refresh(a)
     
-    return build_agent_response(db, a)
+    return AgentService.build_agent_response(db, a)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)

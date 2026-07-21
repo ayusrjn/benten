@@ -6,12 +6,7 @@ from app.database import get_db
 from app.models.user import User
 from app.api.security import verify_password, get_password_hash, create_access_token, get_current_active_user
 from app.config import settings
-from pydantic import BaseModel
-
-class UserCreate(BaseModel):
-    email: str
-    password: str
-    full_name: str | None = None
+from app.schemas import UserCreate
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 

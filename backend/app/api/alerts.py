@@ -1,8 +1,6 @@
 from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -11,63 +9,13 @@ from app.models.user import User
 from app.models.project import Project
 from app.models.alert import Alert, AlertRule
 from app.models.organization import Member
-from app.api.integrations import get_or_create_user_project
+from app.services.project_service import ProjectService
+from app.utils.datetime_utils import get_time_text
+from app.schemas import AlertRuleResponse, AlertRuleCreate, AlertRuleUpdate, AlertResponse
 
 # We export two routers from this file
 alerts_router = APIRouter(prefix="/alerts", tags=["Alerts"])
 rules_router = APIRouter(prefix="/alert_rules", tags=["Alert Rules"])
-
-class AlertRuleResponse(BaseModel):
-    id: uuid.UUID
-    metric: str
-    threshold: str
-    duration: str
-    action: str
-
-    class Config:
-        from_attributes = True
-
-class AlertRuleCreate(BaseModel):
-    projectId: Optional[uuid.UUID] = None
-    metric: str
-    threshold: str
-    duration: str
-    action: str
-
-class AlertRuleUpdate(BaseModel):
-    metric: Optional[str] = None
-    threshold: Optional[str] = None
-    duration: Optional[str] = None
-    action: Optional[str] = None
-
-class AlertResponse(BaseModel):
-    id: uuid.UUID
-    name: str
-    status: str
-    agentName: str
-    timeText: str
-    metric: str
-
-    class Config:
-        from_attributes = True
-
-def get_time_text(dt: datetime) -> str:
-    now = datetime.now(timezone.utc)
-    diff = now - dt.replace(tzinfo=timezone.utc) if dt.tzinfo else now - dt.replace(tzinfo=None)
-    
-    seconds = int(diff.total_seconds())
-    if seconds < 60:
-        return "Just now"
-    minutes = seconds // 60
-    if minutes < 60:
-        return f"{minutes} min ago" if minutes == 1 else f"{minutes} mins ago"
-    hours = minutes // 60
-    if hours < 24:
-        return f"{hours} hour ago" if hours == 1 else f"{hours} hours ago"
-    days = hours // 24
-    if days == 1:
-        return "Yesterday"
-    return dt.strftime("%Y-%m-%d %H:%M")
 
 # ==========================================
 # ALERTS ROUTER (Incident Log)
@@ -82,7 +30,7 @@ def list_alerts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    project = get_or_create_user_project(db, current_user)
+    project = ProjectService.get_or_create_user_project(db, current_user)
     active_project_id = projectId or project.id
     
     member = db.query(Member).filter(Member.email == current_user.email).first()
@@ -138,7 +86,7 @@ def list_alert_rules(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    project = get_or_create_user_project(db, current_user)
+    project = ProjectService.get_or_create_user_project(db, current_user)
     active_project_id = projectId or project.id
     
     member = db.query(Member).filter(Member.email == current_user.email).first()
@@ -163,7 +111,7 @@ def create_alert_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    project = get_or_create_user_project(db, current_user)
+    project = ProjectService.get_or_create_user_project(db, current_user)
     active_project_id = payload.projectId or project.id
     
     member = db.query(Member).filter(Member.email == current_user.email).first()

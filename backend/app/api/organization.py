@@ -1,7 +1,6 @@
 from typing import List, Optional
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -15,28 +14,7 @@ from app.services.project_service import ProjectService
 router = APIRouter(prefix="/organization", tags=["Organization"])
 
 
-class OrgStatsResponse(BaseModel):
-    id: uuid.UUID
-    name: str
-    membersCount: int
-    projectsCount: int
-    apiKeysCount: int
-    storageUsedGb: int
-    storageLimitGb: int
-
-class MemberResponse(BaseModel):
-    id: uuid.UUID
-    name: str
-    email: str
-    role: str
-    avatar: str
-
-    class Config:
-        from_attributes = True
-
-class MemberInvite(BaseModel):
-    email: str
-    role: Optional[str] = "Viewer"
+from app.schemas import OrgStatsResponse, MemberResponse, MemberInvite
 
 @router.get("", response_model=OrgStatsResponse)
 def get_organization_stats(

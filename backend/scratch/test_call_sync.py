@@ -14,7 +14,7 @@ from app.workers.connectors.elevenlabs import ElevenLabsConnector
 from app.workers.connectors.vapi import VapiConnector
 from app.workers.connectors.retell import RetellConnector
 from app.workers.tasks import sync_calls_for_integration
-from app.api.integrations import get_or_create_user_project
+from app.services.project_service import ProjectService
 
 
 def run_call_sync_tests():
@@ -31,7 +31,7 @@ def run_call_sync_tests():
             db.commit()
             db.refresh(user)
 
-        project = get_or_create_user_project(db, user)
+        project = ProjectService.get_or_create_user_project(db, user)
         print(f"[1] Verified test project: '{project.name}' (ID: {project.id})")
 
         # 2. Test Connector Interfaces in Mock Mode

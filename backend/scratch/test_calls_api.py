@@ -7,8 +7,8 @@ from app.database import SessionLocal
 from app.models.user import User
 from app.models.conversation import Conversation
 from app.models.project import Project
-from app.api.integrations import get_or_create_user_project
-from app.api.conversations import map_conversation_to_response, calculate_grade
+from app.services.project_service import ProjectService
+from app.services.conversation_service import ConversationService, calculate_grade
 
 
 def test_calls_api():
@@ -20,7 +20,7 @@ def test_calls_api():
         user = db.query(User).first()
         assert user is not None, "User expected in DB"
 
-        project = get_or_create_user_project(db, user)
+        project = ProjectService.get_or_create_user_project(db, user)
         print(f"[1] Active user: {user.email} | Project: {project.name}")
 
         # 2. Fetch conversations
@@ -30,7 +30,7 @@ def test_calls_api():
 
         # 3. Test Response Mapping
         sample_conv = conversations[0]
-        res = map_conversation_to_response(db, sample_conv)
+        res = ConversationService.map_conversation_to_response(db, sample_conv)
 
         print(f"[3] Sample Call Mapped Response:")
         print(f"    - ID: {res.id}")
