@@ -14,9 +14,11 @@ from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.integration import Integration
 from app.models.organization import Member
-from app.api.integrations import get_or_create_user_project, sync_agents_for_integration, PROVIDER_NAME_TO_KEY
+from app.services.project_service import ProjectService, PROVIDER_NAME_TO_KEY
+from app.services.integration_service import IntegrationService
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
+
 
 class AgentResponse(BaseModel):
     id: uuid.UUID
@@ -38,6 +40,7 @@ class AgentResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class AgentCreate(BaseModel):
     projectId: Optional[uuid.UUID] = None
     name: str
@@ -45,21 +48,20 @@ class AgentCreate(BaseModel):
     externalId: Optional[str] = None
     description: Optional[str] = None
 
+
 class AgentUpdate(BaseModel):
     name: Optional[str] = None
     provider: Optional[str] = None
     description: Optional[str] = None
 
+
 def get_agent_metrics(db: Session, agent: Agent) -> dict:
-    # Query last 7 completed conversations to build trends
     convs = db.query(Conversation).filter(
         Conversation.agent_id == agent.id,
         Conversation.status == "Completed"
     ).order_by(Conversation.created_at.desc()).limit(7).all()
     
-    # Reverse to show chronological order (left to right)
     convs.reverse()
-    
     conversations_count = db.query(Conversation).filter(Conversation.agent_id == agent.id).count()
     
     avg_health = db.query(func.avg(Conversation.health_score)).filter(
@@ -68,13 +70,11 @@ def get_agent_metrics(db: Session, agent: Agent) -> dict:
     ).scalar()
     health_score = int(round(avg_health)) if avg_health is not None else 100
     
-    # Extract real trends directly from completed conversations
     latency_trend = [c.latency_ms for c in convs]
     dead_air_trend = [float(c.dead_air_percent) for c in convs]
     interruptions_trend = [c.interruptions for c in convs]
     emotion_trend = [c.health_score for c in convs]
     
-    # Calculate real top problems / incident flags from evaluated call records
     top_problems = []
     if convs:
         high_latency_calls = [c for c in convs if c.latency_ms and c.latency_ms > 800]
@@ -107,6 +107,7 @@ def get_agent_metrics(db: Session, agent: Agent) -> dict:
         "topProblems": top_problems
     }
 
+
 def build_agent_response(db: Session, a: Agent) -> AgentResponse:
     metrics = get_agent_metrics(db, a)
     last_synced_str = a.last_synced_at.isoformat() if a.last_synced_at else None
@@ -128,6 +129,7 @@ def build_agent_response(db: Session, a: Agent) -> AgentResponse:
         topProblems=metrics["topProblems"]
     )
 
+
 @router.get("", response_model=List[AgentResponse])
 def list_agents(
     response: Response,
@@ -139,18 +141,16 @@ def list_agents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    project = get_or_create_user_project(db, current_user)
+    project = ProjectService.get_or_create_user_project(db, current_user)
     active_project_id = projectId or project.id
     
-    # Verify project belongs to user's org
-    member = db.query(Member).filter(Member.email == current_user.email).first()
+    member = ProjectService.get_user_member(db, current_user)
     proj = db.query(Project).filter(Project.id == active_project_id, Project.organization_id == member.organization_id).first()
     if not proj:
         raise HTTPException(status_code=403, detail="Access to specified project denied")
         
     query = db.query(Agent).filter(Agent.project_id == active_project_id)
     
-    # Sort
     if _sort:
         col = getattr(Agent, _sort, None)
         if col is not None:
@@ -164,24 +164,25 @@ def list_agents(
     total = query.count()
     response.headers["x-total-count"] = str(total)
     
-    # Paginate
     if _start is not None and _end is not None:
         query = query.offset(_start).limit(_end - _start)
         
     agents = query.all()
     return [build_agent_response(db, a) for a in agents]
 
+
 class GlobalSyncAgentsResponse(BaseModel):
     success: bool
     totalSynced: int
     message: str
+
 
 @router.post("/sync", response_model=GlobalSyncAgentsResponse)
 def sync_all_agents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    project = get_or_create_user_project(db, current_user)
+    project = ProjectService.get_or_create_user_project(db, current_user)
     integrations = db.query(Integration).filter(
         Integration.project_id == project.id,
         Integration.connected == True
@@ -192,8 +193,9 @@ def sync_all_agents(
 
     for integ in integrations:
         provider_key = PROVIDER_NAME_TO_KEY.get(integ.name, integ.name.lower())
-        if integ.api_key:
-            agents = sync_agents_for_integration(db, project.id, provider_key, integ.api_key)
+        raw_key = IntegrationService.get_decrypted_key(integ)
+        if raw_key:
+            agents = IntegrationService.sync_agents(db, project.id, provider_key, raw_key)
             total_synced += len(agents)
             synced_providers.append(integ.name)
 
@@ -210,13 +212,14 @@ def sync_all_agents(
         message=f"Synced {total_synced} agents across providers: {', '.join(synced_providers)}"
     )
 
+
 @router.get("/{id}", response_model=AgentResponse)
 def get_agent(
     id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    member = db.query(Member).filter(Member.email == current_user.email).first()
+    member = ProjectService.get_user_member(db, current_user)
     
     a = db.query(Agent).join(Project).filter(
         Agent.id == id,
@@ -228,16 +231,17 @@ def get_agent(
         
     return build_agent_response(db, a)
 
+
 @router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
 def create_agent(
     payload: AgentCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    default_project = get_or_create_user_project(db, current_user)
+    default_project = ProjectService.get_or_create_user_project(db, current_user)
     active_project_id = payload.projectId or default_project.id
     
-    member = db.query(Member).filter(Member.email == current_user.email).first()
+    member = ProjectService.get_user_member(db, current_user)
     proj = db.query(Project).filter(Project.id == active_project_id, Project.organization_id == member.organization_id).first()
     if not proj:
         raise HTTPException(status_code=403, detail="Access denied to specified project")
@@ -255,6 +259,7 @@ def create_agent(
     
     return build_agent_response(db, new_agent)
 
+
 @router.put("/{id}", response_model=AgentResponse)
 @router.patch("/{id}", response_model=AgentResponse)
 def update_agent(
@@ -263,7 +268,7 @@ def update_agent(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    member = db.query(Member).filter(Member.email == current_user.email).first()
+    member = ProjectService.get_user_member(db, current_user)
     
     a = db.query(Agent).join(Project).filter(
         Agent.id == id,
@@ -285,13 +290,14 @@ def update_agent(
     
     return build_agent_response(db, a)
 
+
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_agent(
     id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    member = db.query(Member).filter(Member.email == current_user.email).first()
+    member = ProjectService.get_user_member(db, current_user)
     
     a = db.query(Agent).join(Project).filter(
         Agent.id == id,
@@ -304,4 +310,3 @@ def delete_agent(
     db.delete(a)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-

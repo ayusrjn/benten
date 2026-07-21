@@ -60,7 +60,10 @@ cd ..
 # Start Celery worker
 cd backend
 source venv/bin/activate
-celery -A app.workers.celery_app worker --loglevel=info &
+# Prevent HuggingFace Hub from making HTTP requests for already-cached models
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+celery -A app.workers.celery_app worker --loglevel=info --concurrency=2 --prefetch-multiplier=1 &
 CELERY_PID=$!
 cd ..
 

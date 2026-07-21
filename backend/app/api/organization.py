@@ -10,9 +10,10 @@ from app.models.user import User
 from app.models.project import Project
 from app.models.organization import Organization, Member
 from app.models.integration import Integration
-from app.api.integrations import get_or_create_user_project
+from app.services.project_service import ProjectService
 
 router = APIRouter(prefix="/organization", tags=["Organization"])
+
 
 class OrgStatsResponse(BaseModel):
     id: uuid.UUID
@@ -42,7 +43,7 @@ def get_organization_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    project = get_or_create_user_project(db, current_user)
+    project = ProjectService.get_or_create_user_project(db, current_user)
     
     member = db.query(Member).filter(Member.email == current_user.email).first()
     if not member:
@@ -81,7 +82,7 @@ def list_organization_members(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    project = get_or_create_user_project(db, current_user)
+    project = ProjectService.get_or_create_user_project(db, current_user)
     
     member = db.query(Member).filter(Member.email == current_user.email).first()
     if not member:
@@ -116,7 +117,7 @@ def invite_member(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    project = get_or_create_user_project(db, current_user)
+    project = ProjectService.get_or_create_user_project(db, current_user)
     
     member = db.query(Member).filter(Member.email == current_user.email).first()
     if not member:

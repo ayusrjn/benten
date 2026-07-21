@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Integer, Numeric, DateTime, ForeignKey, Text, CheckConstraint, func
+from sqlalchemy import Column, String, Integer, Numeric, DateTime, ForeignKey, Text, CheckConstraint, func, JSON
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -16,7 +16,7 @@ class Conversation(Base):
     started_at = Column(DateTime(timezone=True), nullable=True)
     ended_at = Column(DateTime(timezone=True), nullable=True)
     cost = Column(Numeric(10, 4), nullable=True)
-    status = Column(String(20), nullable=False)  # e.g., 'Processing', 'Completed', 'Error', 'Healthy', 'Warning', 'Critical'
+    status = Column(String(20), nullable=False)
     health_score = Column(Integer, nullable=True)
     latency_ms = Column(Integer, nullable=False, default=0)
     dead_air_percent = Column(Numeric(5, 2), nullable=False, default=0.00)
@@ -25,7 +25,7 @@ class Conversation(Base):
     primary_emotion = Column(String(50), nullable=True)
     voice_quality = Column(Integer, nullable=True)
     audio_url = Column(String(2048), nullable=True)
-    raw_metrics_json = Column(JSONB, nullable=True)
+    raw_metrics_json = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (

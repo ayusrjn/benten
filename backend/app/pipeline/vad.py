@@ -5,6 +5,20 @@ from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+# Module-level singleton — shared across all tasks in the same worker process
+_vad_instance = None
+
+def get_vad() -> "SileroVADWrapper":
+    """Returns the singleton SileroVADWrapper, creating it on first call."""
+    global _vad_instance
+    if _vad_instance is None:
+        _vad_instance = SileroVADWrapper()
+    return _vad_instance
+
+def preload_vad():
+    """Eagerly initialize the VAD model (called at worker startup)."""
+    get_vad()
+
 class SileroVADWrapper:
     """
     ONNX wrapper class for Silero VAD model to perform voice activity detection.

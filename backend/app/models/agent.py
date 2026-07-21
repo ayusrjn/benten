@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, JSON
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
@@ -11,9 +11,8 @@ class Agent(BaseModel):
     provider = Column(String(50), nullable=False)
     external_id = Column(String(255), nullable=True)
     description = Column(Text, nullable=True)
-    raw_metadata = Column(JSONB, nullable=True)
+    raw_metadata = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
 
     project = relationship("Project", back_populates="agents")
     conversations = relationship("Conversation", back_populates="agent", cascade="all, delete-orphan")
-

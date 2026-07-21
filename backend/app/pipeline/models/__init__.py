@@ -16,10 +16,20 @@ def get_sentiment_pipeline():
     if _sentiment_pipeline is None and pipeline is not None:
         try:
             logger.info("Loading RoBERTa sentiment model")
-            _sentiment_pipeline = pipeline("text-classification", model="SamLowe/roberta-base-go_emotions", top_k=3)
+            _sentiment_pipeline = pipeline(
+                "text-classification",
+                model="SamLowe/roberta-base-go_emotions",
+                top_k=3,
+                truncation=True,
+                max_length=512
+            )
         except Exception as e:
             logger.error(f"Failed to load sentiment pipeline: {e}")
     return _sentiment_pipeline
+
+def preload_sentiment():
+    """Eagerly initialize the sentiment pipeline (called at worker startup)."""
+    get_sentiment_pipeline()
 
 def score_sentiment_roberta(transcript_text: str) -> Dict[str, float]:
     """

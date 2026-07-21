@@ -4,18 +4,18 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
 
 from app.database import get_db
 from app.api.security import get_current_active_user
 from app.models.user import User
 from app.models.project import Project
-from app.models.agent import Agent
 from app.models.conversation import Conversation, SpeechSegment
 from app.models.organization import Member
-from app.api.integrations import get_or_create_user_project
+from app.services.project_service import ProjectService
+from app.services.conversation_service import ConversationService, format_duration, calculate_grade
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
+
 
 class SpeechSegmentResponse(BaseModel):
     speaker: str
@@ -25,6 +25,7 @@ class SpeechSegmentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class ConversationResponse(BaseModel):
     id: uuid.UUID
@@ -60,44 +61,22 @@ class ConversationResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class ConversationIngestRequest(BaseModel):
     projectId: Optional[uuid.UUID] = None
     provider: str
     providerCallId: str
 
-def format_duration(seconds: int) -> str:
-    if not seconds:
-        return "0s"
-    if seconds < 60:
-        return f"{seconds}s"
-    minutes = seconds // 60
-    rem_seconds = seconds % 60
-    if rem_seconds == 0:
-        return f"{minutes}m"
-    return f"{minutes}m {rem_seconds}s"
-
-def calculate_grade(score: Optional[int]) -> Optional[str]:
-    if score is None:
-        return None
-    if score >= 95:
-        return "A+"
-    elif score >= 90:
-        return "A"
-    elif score >= 80:
-        return "B"
-    elif score >= 70:
-        return "C"
-    else:
-        return "F"
 
 def map_conversation_to_response(db: Session, c: Conversation) -> ConversationResponse:
-    agent_name = "Unknown Agent"
-    if c.agent:
-        agent_name = c.agent.name
+    agent_name = c.agent.name if c.agent else "Unknown Agent"
 
-    segments = db.query(SpeechSegment).filter(
+    # Use pre-loaded speech_segments if available via joinedload (avoids N+1 query)
+    segments = c.speech_segments if c.speech_segments is not None else db.query(SpeechSegment).filter(
         SpeechSegment.conversation_id == c.id
     ).order_by(SpeechSegment.start_sec.asc()).all()
+
+    sorted_segments = sorted(segments, key=lambda s: float(s.start_sec))
 
     segment_responses = [
         SpeechSegmentResponse(
@@ -105,12 +84,12 @@ def map_conversation_to_response(db: Session, c: Conversation) -> ConversationRe
             start=float(s.start_sec),
             end=float(s.end_sec),
             text=s.text
-        ) for s in segments
+        ) for s in sorted_segments
     ]
 
     date_str = c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else ""
 
-    # Real detected issues calculation based strictly on existing metrics
+    # Real detected issues calculation based strictly on metrics
     detected_issues = []
     if c.latency_ms and c.latency_ms > 1000:
         detected_issues.append(f"Average latency exceeded {c.latency_ms}ms")
@@ -121,11 +100,9 @@ def map_conversation_to_response(db: Session, c: Conversation) -> ConversationRe
     if c.primary_emotion in ["frustrated", "angry"]:
         detected_issues.append(f"User exhibited frustration markers")
 
-    # Only include emotion timeline if real timeline data exists in raw metrics
     raw_meta = c.raw_metrics_json or {}
     emotion_timeline = raw_meta.get("emotion_timeline", [])
 
-    # Customer identifier resolution (strictly real provider data)
     cust_val = (
         raw_meta.get("provider_metadata", {}).get("customer") or 
         raw_meta.get("customer") or 
@@ -164,12 +141,13 @@ def map_conversation_to_response(db: Session, c: Conversation) -> ConversationRe
         voiceQuality=c.voice_quality,
         customer=cust_val,
         hasRecording=bool(c.audio_url),
-        hasTranscript=len(segments) > 0,
+        hasTranscript=len(sorted_segments) > 0,
         emotionTimeline=emotion_timeline,
         detectedIssues=detected_issues,
         segments=segment_responses,
         rawMetrics=raw_meta
     )
+
 
 @router.get("", response_model=List[ConversationResponse])
 def list_conversations(
@@ -192,96 +170,36 @@ def list_conversations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    project = get_or_create_user_project(db, current_user)
+    project = ProjectService.get_or_create_user_project(db, current_user)
     active_project_id = projectId or project.id
 
-    member = db.query(Member).filter(Member.email == current_user.email).first()
+    member = ProjectService.get_user_member(db, current_user)
     proj = db.query(Project).filter(Project.id == active_project_id, Project.organization_id == member.organization_id).first()
     if not proj:
         raise HTTPException(status_code=403, detail="Access denied to specified project")
 
-    query = db.query(Conversation).filter(Conversation.project_id == active_project_id)
+    conversations, total = ConversationService.list_conversations(
+        db=db,
+        project_id=active_project_id,
+        agent_id=agentId,
+        provider=provider,
+        status=status,
+        grade=grade,
+        min_score=minScore,
+        max_score=maxScore,
+        min_duration=minDuration,
+        max_duration=maxDuration,
+        max_latency=maxLatency,
+        start=_start,
+        end=_end,
+        sort=_sort,
+        order=_order,
+        q=q
+    )
 
-    # Filter by Agent
-    if agentId:
-        query = query.filter(Conversation.agent_id == agentId)
-
-    # Filter by Provider
-    if provider and provider.lower() != "all":
-        query = query.filter(Conversation.provider.ilike(provider.lower()))
-
-    # Filter by Status
-    if status and status.lower() != "all":
-        query = query.filter(Conversation.status.ilike(status))
-
-    # Filter by Grade / Score
-    if grade:
-        g = grade.upper()
-        if g in ("A+", "A"):
-            query = query.filter(Conversation.health_score >= 90)
-        elif g == "B":
-            query = query.filter(Conversation.health_score >= 80, Conversation.health_score < 90)
-        elif g == "C":
-            query = query.filter(Conversation.health_score >= 70, Conversation.health_score < 80)
-        elif g == "F":
-            query = query.filter(Conversation.health_score < 70)
-
-    if minScore is not None:
-        query = query.filter(Conversation.health_score >= minScore)
-
-    if maxScore is not None:
-        query = query.filter(Conversation.health_score <= maxScore)
-
-    # Filter by Duration
-    if minDuration is not None:
-        query = query.filter(Conversation.duration_sec >= minDuration)
-
-    if maxDuration is not None:
-        query = query.filter(Conversation.duration_sec <= maxDuration)
-
-    # Filter by Max Latency
-    if maxLatency is not None:
-        query = query.filter(Conversation.latency_ms <= maxLatency)
-
-    # Multi-field search
-    if q:
-        query = query.outerjoin(Agent).filter(
-            or_(
-                Agent.name.ilike(f"%{q}%"),
-                Conversation.provider.ilike(f"%{q}%"),
-                Conversation.external_id.ilike(f"%{q}%"),
-                Conversation.id.cast(func.text).ilike(f"%{q}%")
-            )
-        )
-
-    # Sorting
-    if _sort:
-        col = None
-        if _sort in ("score", "health_score"):
-            col = Conversation.health_score
-        elif _sort in ("duration", "duration_sec"):
-            col = Conversation.duration_sec
-        elif _sort in ("date", "created_at"):
-            col = Conversation.created_at
-        else:
-            col = getattr(Conversation, _sort, None)
-
-        if col is not None:
-            if _order and _order.lower() == "desc":
-                query = query.order_by(col.desc())
-            else:
-                query = query.order_by(col.asc())
-    else:
-        query = query.order_by(Conversation.created_at.desc())
-
-    total = query.count()
     response.headers["x-total-count"] = str(total)
-
-    if _start is not None and _end is not None:
-        query = query.offset(_start).limit(_end - _start)
-
-    conversations = query.all()
     return [map_conversation_to_response(db, c) for c in conversations]
+
 
 @router.get("/{id}", response_model=ConversationResponse)
 def get_conversation(
@@ -289,17 +207,20 @@ def get_conversation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    member = db.query(Member).filter(Member.email == current_user.email).first()
+    member = ProjectService.get_user_member(db, current_user)
+    if not member:
+        raise HTTPException(status_code=403, detail="Access denied")
 
-    c = db.query(Conversation).join(Project).filter(
-        Conversation.id == id,
-        Project.organization_id == member.organization_id
-    ).first()
-
+    c = ConversationService.get_conversation_with_relations(db, conversation_id=id)
     if not c:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    # Verify organization authorization
+    if c.project and c.project.organization_id != member.organization_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     return map_conversation_to_response(db, c)
+
 
 @router.post("/{id}/reevaluate", status_code=status.HTTP_202_ACCEPTED)
 def reevaluate_conversation(
@@ -307,14 +228,10 @@ def reevaluate_conversation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    member = db.query(Member).filter(Member.email == current_user.email).first()
+    member = ProjectService.get_user_member(db, current_user)
+    c = ConversationService.get_conversation_with_relations(db, conversation_id=id)
 
-    c = db.query(Conversation).join(Project).filter(
-        Conversation.id == id,
-        Project.organization_id == member.organization_id
-    ).first()
-
-    if not c:
+    if not c or (c.project and c.project.organization_id != member.organization_id):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     from app.workers.tasks import evaluate_audio
@@ -328,16 +245,17 @@ def reevaluate_conversation(
         "message": f"Re-evaluation background task queued for call {id}"
     }
 
+
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 def trigger_ingestion(
     payload: ConversationIngestRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    project = get_or_create_user_project(db, current_user)
+    project = ProjectService.get_or_create_user_project(db, current_user)
     active_project_id = payload.projectId or project.id
 
-    member = db.query(Member).filter(Member.email == current_user.email).first()
+    member = ProjectService.get_user_member(db, current_user)
     proj = db.query(Project).filter(Project.id == active_project_id, Project.organization_id == member.organization_id).first()
     if not proj:
         raise HTTPException(status_code=403, detail="Access denied to specified project")
@@ -356,23 +274,19 @@ def trigger_ingestion(
         "message": f"Background call ingestion triggered for provider '{payload.provider}'"
     }
 
+
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_conversation(
     id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    member = db.query(Member).filter(Member.email == current_user.email).first()
+    member = ProjectService.get_user_member(db, current_user)
+    c = ConversationService.get_conversation_with_relations(db, conversation_id=id)
 
-    c = db.query(Conversation).join(Project).filter(
-        Conversation.id == id,
-        Project.organization_id == member.organization_id
-    ).first()
-
-    if not c:
+    if not c or (c.project and c.project.organization_id != member.organization_id):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     db.delete(c)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-

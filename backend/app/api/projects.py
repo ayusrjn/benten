@@ -12,9 +12,10 @@ from app.models.project import Project
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.organization import Member
-from app.api.integrations import get_or_create_user_project
+from app.services.project_service import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
+
 
 class ProjectResponse(BaseModel):
     id: uuid.UUID
@@ -43,7 +44,8 @@ def list_projects(
     current_user: User = Depends(get_current_active_user)
 ):
     # Ensure default user project / org is created
-    get_or_create_user_project(db, current_user)
+    ProjectService.get_or_create_user_project(db, current_user)
+
     
     member = db.query(Member).filter(Member.email == current_user.email).first()
     if not member:

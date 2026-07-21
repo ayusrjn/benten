@@ -23,13 +23,30 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
 
     # Security Configuration
+    ENVIRONMENT: str = "development"
     SECRET_KEY: str = "super-secret-key-for-benten-development-only"
+    ENCRYPTION_KEY: str | None = None
+    DATABASE_URL_OVERRIDE: str | None = None
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
+    HF_AUTH_TOKEN: str | None = None
+
+    @property
+    def FERNET_KEY(self) -> bytes:
+        import base64
+        import hashlib
+        if self.ENCRYPTION_KEY:
+            return self.ENCRYPTION_KEY.encode()
+        # Derive a 32-byte urlsafe base64 key deterministically from SECRET_KEY for dev fallback
+        key_hash = hashlib.sha256(self.SECRET_KEY.encode()).digest()
+        return base64.urlsafe_b64encode(key_hash)
 
     @property
     def DATABASE_URL(self) -> str:
+        if self.DATABASE_URL_OVERRIDE:
+            return self.DATABASE_URL_OVERRIDE
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
 
     @property
     def CELERY_BROKER_URL(self) -> str:
@@ -47,3 +64,4 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+

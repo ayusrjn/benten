@@ -2,12 +2,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.config import settings
 
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20
-)
+engine_kwargs = {"pool_pre_ping": True}
+if "sqlite" in settings.DATABASE_URL:
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    engine_kwargs.update({"pool_size": 10, "max_overflow": 20})
+
+engine = create_engine(settings.DATABASE_URL, **engine_kwargs)
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
