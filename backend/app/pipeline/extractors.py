@@ -72,23 +72,107 @@ def calculate_dead_air(speech_segments: List[Dict[str, Any]], call_duration: flo
         
     return (total_dead_air / call_duration) * 100.0
 
-def calculate_interruptions(speech_segments: List[Dict[str, Any]]) -> int:
+def _normalize_role(role_or_speaker: str) -> str:
+    if not role_or_speaker:
+        return "user"
+    r = str(role_or_speaker).lower()
+    if r in ["agent", "bot", "assistant", "channel_0"]:
+        return "agent"
+    return "user"
+
+
+def _get_seg_times(seg: Dict[str, Any]) -> tuple:
+    start = float(seg.get("start", seg.get("start_sec", 0.0)))
+    end = float(seg.get("end", seg.get("end_sec", 0.0)))
+    role = _normalize_role(seg.get("role") or seg.get("speaker") or "")
+    return start, end, role
+
+
+def calculate_detailed_interruptions(speech_segments: List[Dict[str, Any]], call_duration: float = 0.0) -> Dict[str, Any]:
     """
-    Calculates the frequency of overlap blocks (where user talks over the agent).
+    Calculates comprehensive real-data interruption & barge-in telemetry metrics:
+      - user_to_ai_interruptions: User interrupted AI
+      - ai_to_user_interruptions: AI interrupted User
+      - total_interruption_events: Total overlap events
+      - avg_overlap_duration_sec: Average duration of overlap (sec)
+      - longest_interruption_sec: Max single overlap duration (sec)
+      - interruptions_per_minute: Events per minute
+      - barge_ins_accepted: User interrupted AI and AI backed off (stopped in <= 800ms)
+      - barge_ins_ignored: User interrupted AI and AI kept talking (> 800ms)
     """
-    logger.debug("Calculating agent interruption count")
-    interruptions = 0
-    
-    agent_segments = [s for s in speech_segments if s.get("role") == "Agent"]
-    user_segments = [s for s in speech_segments if s.get("role") == "User"]
-    
-    for agent_seg in agent_segments:
-        for user_seg in user_segments:
-            # Check if user segment starts during agent segment
-            if agent_seg["start"] < user_seg["start"] < agent_seg["end"]:
-                interruptions += 1
-                
-    return interruptions
+    logger.debug("Calculating detailed real-data interruption metrics")
+    user_to_ai = 0
+    ai_to_user = 0
+    barge_ins_accepted = 0
+    barge_ins_ignored = 0
+    overlap_durations = []
+
+    norm_segments = []
+    for s in speech_segments:
+        start, end, role = _get_seg_times(s)
+        if end > start:
+            norm_segments.append({"start": start, "end": end, "role": role})
+
+    norm_segments.sort(key=lambda x: x["start"])
+
+    for i in range(len(norm_segments)):
+        seg_i = norm_segments[i]
+        for j in range(i + 1, len(norm_segments)):
+            seg_j = norm_segments[j]
+
+            if seg_j["start"] >= seg_i["end"]:
+                break
+
+            if seg_i["role"] != seg_j["role"]:
+                overlap_start = max(seg_i["start"], seg_j["start"])
+                overlap_end = min(seg_i["end"], seg_j["end"])
+                overlap_dur = overlap_end - overlap_start
+
+                if overlap_dur > 0:
+                    overlap_durations.append(round(overlap_dur, 3))
+
+                    interrupted_role = seg_i["role"]
+                    interrupter_role = seg_j["role"]
+
+                    if interrupter_role == "user" and interrupted_role == "agent":
+                        user_to_ai += 1
+                        agent_remaining = seg_i["end"] - seg_j["start"]
+                        if agent_remaining <= 0.8:
+                            barge_ins_accepted += 1
+                        else:
+                            barge_ins_ignored += 1
+                    elif interrupter_role == "agent" and interrupted_role == "user":
+                        ai_to_user += 1
+
+    total_events = user_to_ai + ai_to_user
+    avg_overlap = round(sum(overlap_durations) / len(overlap_durations), 2) if overlap_durations else 0.0
+    longest_overlap = round(max(overlap_durations), 2) if overlap_durations else 0.0
+
+    if not call_duration or call_duration <= 0:
+        if norm_segments:
+            call_duration = max(s["end"] for s in norm_segments)
+
+    call_dur_min = (call_duration / 60.0) if call_duration > 0 else 0.0
+    rate_per_min = round(total_events / call_dur_min, 2) if call_dur_min > 0 else 0.0
+
+    return {
+        "user_to_ai_interruptions": user_to_ai,
+        "ai_to_user_interruptions": ai_to_user,
+        "total_interruption_events": total_events,
+        "avg_overlap_duration_sec": avg_overlap,
+        "longest_interruption_sec": longest_overlap,
+        "interruptions_per_minute": rate_per_min,
+        "barge_ins_accepted": barge_ins_accepted,
+        "barge_ins_ignored": barge_ins_ignored
+    }
+
+
+def calculate_interruptions(speech_segments: List[Dict[str, Any]], call_duration: float = 0.0) -> int:
+    """
+    Calculates total frequency of overlap events.
+    """
+    details = calculate_detailed_interruptions(speech_segments, call_duration)
+    return details["total_interruption_events"]
 
 def calculate_speech_rate(speech_segments: List[Dict[str, Any]]) -> float:
     """

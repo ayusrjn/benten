@@ -56,6 +56,7 @@ class ConversationResponse(BaseModel):
     emotionTimeline: List[str] = []
     detectedIssues: List[str] = []
     segments: List[SpeechSegmentResponse] = []
+    interruptionDetails: Optional[dict] = None
     rawMetrics: Optional[dict] = None
 
     class Config:
@@ -103,6 +104,18 @@ def map_conversation_to_response(db: Session, c: Conversation) -> ConversationRe
     raw_meta = c.raw_metrics_json or {}
     emotion_timeline = raw_meta.get("emotion_timeline", [])
 
+    interruption_details = raw_meta.get("interruption_details")
+    if not interruption_details and sorted_segments:
+        from app.pipeline.extractors import calculate_detailed_interruptions
+        seg_dicts = [
+            {"start": float(s.start_sec), "end": float(s.end_sec), "role": s.speaker}
+            for s in sorted_segments
+        ]
+        interruption_details = calculate_detailed_interruptions(seg_dicts, float(c.duration_sec or 0))
+
+    if interruption_details and "interruption_details" not in raw_meta:
+        raw_meta = {**raw_meta, "interruption_details": interruption_details}
+
     cust_val = (
         raw_meta.get("provider_metadata", {}).get("customer") or 
         raw_meta.get("customer") or 
@@ -145,6 +158,7 @@ def map_conversation_to_response(db: Session, c: Conversation) -> ConversationRe
         emotionTimeline=emotion_timeline,
         detectedIssues=detected_issues,
         segments=segment_responses,
+        interruptionDetails=interruption_details,
         rawMetrics=raw_meta
     )
 

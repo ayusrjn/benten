@@ -11,6 +11,7 @@ from .extractors import (
     calculate_turn_latency,
     calculate_dead_air,
     calculate_interruptions,
+    calculate_detailed_interruptions,
     calculate_speech_rate
 )
 from .models import score_sentiment_roberta, score_voice_quality_nisqa
@@ -84,7 +85,6 @@ def evaluate_audio(conversation_id: str, audio_url: str):
             )
             sorted_segs = sorted(db_seg_data, key=lambda s: s["start_sec"])
             latencies = []
-            interruptions = 0
             total_speech_duration = 0.0
             total_words = 0
 
@@ -98,19 +98,18 @@ def evaluate_audio(conversation_id: str, audio_url: str):
                 if i > 0:
                     prev_seg = sorted_segs[i - 1]
                     prev_end = prev_seg["end_sec"]
-                    if start < prev_end and prev_seg["speaker"] != seg["speaker"]:
-                        interruptions += 1
                     if prev_seg["speaker"] == "user" and seg["speaker"] == "agent":
                         pause = start - prev_end
                         if pause >= 0:
                             latencies.append(pause)
 
+            interruption_details = calculate_detailed_interruptions(db_seg_data, call_duration)
+            interruptions = interruption_details["total_interruption_events"]
             avg_latency_sec = (sum(latencies) / len(latencies)) if latencies else 0.5
             latency_sec = avg_latency_sec
             dead_air_sec = max(0.0, call_duration - total_speech_duration)
             dead_air = round((dead_air_sec / call_duration) * 100.0, 2) if call_duration > 0 else 0.0
             speech_rate = int(round((total_words / (total_speech_duration / 60.0)))) if total_speech_duration > 0 else 140
-            # No diarized segments to save downstream
             text_bearing_segs = []
         else:
             logger.info("No provider segments found — running PyAnnote diarization")
@@ -121,11 +120,13 @@ def evaluate_audio(conversation_id: str, audio_url: str):
             if segments:
                 latency_sec = calculate_turn_latency(segments)
                 dead_air = calculate_dead_air(segments, call_duration)
-                interruptions = calculate_interruptions(segments)
+                interruption_details = calculate_detailed_interruptions(segments, call_duration)
+                interruptions = interruption_details["total_interruption_events"]
                 speech_rate = calculate_speech_rate(segments)
             else:
                 latency_sec = 0.5
                 dead_air = 0.0
+                interruption_details = calculate_detailed_interruptions([], call_duration)
                 interruptions = 0
                 speech_rate = 140
 
@@ -167,11 +168,15 @@ def evaluate_audio(conversation_id: str, audio_url: str):
         health_score = 100 - (latency_sec * 10) - (dead_air * 2) - (interruptions * 5)
         conversation.health_score = max(0, min(100, int(round(health_score))))
         conversation.status = "Completed"
-        conversation.raw_metrics_json = {
+        
+        raw_meta = conversation.raw_metrics_json or {}
+        raw_meta.update({
             "latency_sec": latency_sec,
             "mos_score": mos_score,
-            "sentiment": sentiment
-        }
+            "sentiment": sentiment,
+            "interruption_details": interruption_details
+        })
+        conversation.raw_metrics_json = raw_meta
 
         if text_bearing_segs:
             db.query(SpeechSegment).filter(SpeechSegment.conversation_id == conversation.id).delete()

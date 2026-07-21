@@ -47,6 +47,17 @@ export interface SpeechSegment {
   text: string;
 }
 
+export interface InterruptionDetails {
+  user_to_ai_interruptions: number;
+  ai_to_user_interruptions: number;
+  total_interruption_events: number;
+  avg_overlap_duration_sec: number;
+  longest_interruption_sec: number;
+  interruptions_per_minute: number;
+  barge_ins_accepted: number;
+  barge_ins_ignored: number;
+}
+
 export interface CallDetail {
   id: string;
   agentId: string;
@@ -76,6 +87,7 @@ export interface CallDetail {
   emotionTimeline: string[];
   detectedIssues: string[];
   segments: SpeechSegment[];
+  interruptionDetails?: InterruptionDetails | null;
   rawMetrics?: any;
 }
 
@@ -164,6 +176,7 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
 
   const providerKey = (call?.provider || "vapi").toLowerCase();
   const providerColor = PROVIDER_COLORS[providerKey] || "#1890ff";
+  const intDetails: InterruptionDetails | undefined = call?.interruptionDetails || call?.rawMetrics?.interruption_details;
 
   const getScoreColor = (score: number) => {
     if (score >= 90) return token.colorSuccess;
@@ -385,6 +398,82 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
                       </Card>
                     </Col>
                   </Row>
+                </div>
+
+                {/* Interruption & Barge-in Telemetry */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <Title level={5} style={{ margin: 0 }}>Interruption & Barge-in Telemetry</Title>
+                    <Tag color="purple" style={{ fontWeight: 600 }}>Real Signal Analysis</Tag>
+                  </div>
+                  <Card size="small" style={{ borderRadius: 12, padding: 12 }}>
+                    <Row gutter={[12, 12]}>
+                      <Col span={12}>
+                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                          <Text type="secondary" style={{ fontSize: 11, display: "block" }}>User → AI Interruptions</Text>
+                          <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorWarning }}>
+                            {intDetails?.user_to_ai_interruptions ?? "—"}
+                          </Text>
+                        </div>
+                      </Col>
+                      <Col span={12}>
+                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                          <Text type="secondary" style={{ fontSize: 11, display: "block" }}>AI → User Interruptions</Text>
+                          <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorWarning }}>
+                            {intDetails?.ai_to_user_interruptions ?? "—"}
+                          </Text>
+                        </div>
+                      </Col>
+                      <Col span={12}>
+                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                          <Text type="secondary" style={{ fontSize: 11, display: "block" }}>Total Interruption Events</Text>
+                          <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorText }}>
+                            {intDetails?.total_interruption_events ?? "—"}
+                          </Text>
+                        </div>
+                      </Col>
+                      <Col span={12}>
+                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                          <Text type="secondary" style={{ fontSize: 11, display: "block" }}>Interruptions per Minute</Text>
+                          <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorText }}>
+                            {intDetails?.interruptions_per_minute !== undefined ? `${intDetails.interruptions_per_minute} / min` : "—"}
+                          </Text>
+                        </div>
+                      </Col>
+                      <Col span={12}>
+                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                          <Text type="secondary" style={{ fontSize: 11, display: "block" }}>Average Overlap Duration</Text>
+                          <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorInfo }}>
+                            {intDetails?.avg_overlap_duration_sec !== undefined ? `${intDetails.avg_overlap_duration_sec}s` : "—"}
+                          </Text>
+                        </div>
+                      </Col>
+                      <Col span={12}>
+                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                          <Text type="secondary" style={{ fontSize: 11, display: "block" }}>Longest Interruption</Text>
+                          <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorError }}>
+                            {intDetails?.longest_interruption_sec !== undefined ? `${intDetails.longest_interruption_sec}s` : "—"}
+                          </Text>
+                        </div>
+                      </Col>
+                      <Col span={12}>
+                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                          <Text type="secondary" style={{ fontSize: 11, display: "block" }}>Barge-ins Accepted (AI Backed Off)</Text>
+                          <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorSuccess }}>
+                            {intDetails?.barge_ins_accepted ?? "—"}
+                          </Text>
+                        </div>
+                      </Col>
+                      <Col span={12}>
+                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                          <Text type="secondary" style={{ fontSize: 11, display: "block" }}>Barge-ins Ignored (Double-talk Clash)</Text>
+                          <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorError }}>
+                            {intDetails?.barge_ins_ignored ?? "—"}
+                          </Text>
+                        </div>
+                      </Col>
+                    </Row>
+                  </Card>
                 </div>
 
                 {/* Detected Issues */}
