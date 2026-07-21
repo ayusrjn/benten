@@ -14,7 +14,7 @@
 
 </div>
 
-## 📸 Interface Previews
+##  Interface Previews
 
 <div align="center">
 
