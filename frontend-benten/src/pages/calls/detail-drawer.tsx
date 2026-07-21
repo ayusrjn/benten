@@ -178,11 +178,14 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
   };
 
   const seekAudio = (startTime: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = startTime;
-      audioRef.current.play();
-      setIsPlaying(true);
-    }
+    setActiveTab("transcript");
+    setTimeout(() => {
+      if (audioRef.current) {
+        audioRef.current.currentTime = startTime;
+        audioRef.current.play().catch(() => {});
+        setIsPlaying(true);
+      }
+    }, 150);
   };
 
   const providerKey = (call?.provider || "vapi").toLowerCase();
@@ -393,7 +396,19 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
                       </Card>
                     </Col>
                     <Col span={8}>
-                      <Card size="small" style={{ borderRadius: 10, textAlign: "center" }}>
+                      <Card
+                        size="small"
+                        style={{
+                          borderRadius: 10,
+                          textAlign: "center",
+                          cursor: (intDetails?.events && intDetails.events.length > 0) ? "pointer" : "default"
+                        }}
+                        onClick={() => {
+                          if (intDetails?.events && intDetails.events.length > 0) {
+                            seekAudio(intDetails.events[0].start);
+                          }
+                        }}
+                      >
                         <Text type="secondary" style={{ fontSize: 12 }}>Interruptions</Text>
                         <Title level={4} style={{ margin: "4px 0 0" }}>
                           {call.interruptions !== null && call.interruptions !== undefined ? call.interruptions : "—"}
@@ -420,7 +435,18 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
                   <Card size="small" style={{ borderRadius: 12, padding: 12 }}>
                     <Row gutter={[12, 12]}>
                       <Col span={12}>
-                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                        <div
+                          style={{
+                            padding: "8px 12px",
+                            background: token.colorFillQuaternary,
+                            borderRadius: 8,
+                            cursor: intDetails?.events?.some(e => e.type === "user_to_ai") ? "pointer" : "default"
+                          }}
+                          onClick={() => {
+                            const match = intDetails?.events?.find(e => e.type === "user_to_ai");
+                            if (match) seekAudio(match.start);
+                          }}
+                        >
                           <Text type="secondary" style={{ fontSize: 11, display: "block" }}>User → AI Interruptions</Text>
                           <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorWarning }}>
                             {intDetails?.user_to_ai_interruptions ?? "—"}
@@ -428,7 +454,18 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
                         </div>
                       </Col>
                       <Col span={12}>
-                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                        <div
+                          style={{
+                            padding: "8px 12px",
+                            background: token.colorFillQuaternary,
+                            borderRadius: 8,
+                            cursor: intDetails?.events?.some(e => e.type === "ai_to_user") ? "pointer" : "default"
+                          }}
+                          onClick={() => {
+                            const match = intDetails?.events?.find(e => e.type === "ai_to_user");
+                            if (match) seekAudio(match.start);
+                          }}
+                        >
                           <Text type="secondary" style={{ fontSize: 11, display: "block" }}>AI → User Interruptions</Text>
                           <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorWarning }}>
                             {intDetails?.ai_to_user_interruptions ?? "—"}
@@ -436,7 +473,19 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
                         </div>
                       </Col>
                       <Col span={12}>
-                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                        <div
+                          style={{
+                            padding: "8px 12px",
+                            background: token.colorFillQuaternary,
+                            borderRadius: 8,
+                            cursor: (intDetails?.events && intDetails.events.length > 0) ? "pointer" : "default"
+                          }}
+                          onClick={() => {
+                            if (intDetails?.events && intDetails.events.length > 0) {
+                              seekAudio(intDetails.events[0].start);
+                            }
+                          }}
+                        >
                           <Text type="secondary" style={{ fontSize: 11, display: "block" }}>Total Interruption Events</Text>
                           <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorText }}>
                             {intDetails?.total_interruption_events ?? "—"}
@@ -460,7 +509,20 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
                         </div>
                       </Col>
                       <Col span={12}>
-                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                        <div
+                          style={{
+                            padding: "8px 12px",
+                            background: token.colorFillQuaternary,
+                            borderRadius: 8,
+                            cursor: (intDetails?.events && intDetails.events.length > 0) ? "pointer" : "default"
+                          }}
+                          onClick={() => {
+                            if (intDetails?.events && intDetails.events.length > 0) {
+                              const sortedByDur = [...intDetails.events].sort((a, b) => b.duration - a.duration);
+                              seekAudio(sortedByDur[0].start);
+                            }
+                          }}
+                        >
                           <Text type="secondary" style={{ fontSize: 11, display: "block" }}>Longest Interruption</Text>
                           <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorError }}>
                             {intDetails?.longest_interruption_sec !== undefined ? `${intDetails.longest_interruption_sec}s` : "—"}
@@ -468,7 +530,18 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
                         </div>
                       </Col>
                       <Col span={12}>
-                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                        <div
+                          style={{
+                            padding: "8px 12px",
+                            background: token.colorFillQuaternary,
+                            borderRadius: 8,
+                            cursor: intDetails?.events?.some(e => e.barge_in_status === "accepted") ? "pointer" : "default"
+                          }}
+                          onClick={() => {
+                            const match = intDetails?.events?.find(e => e.barge_in_status === "accepted");
+                            if (match) seekAudio(match.start);
+                          }}
+                        >
                           <Text type="secondary" style={{ fontSize: 11, display: "block" }}>Barge-ins Accepted (AI Backed Off)</Text>
                           <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorSuccess }}>
                             {intDetails?.barge_ins_accepted ?? "—"}
@@ -476,7 +549,18 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
                         </div>
                       </Col>
                       <Col span={12}>
-                        <div style={{ padding: "8px 12px", background: token.colorFillQuaternary, borderRadius: 8 }}>
+                        <div
+                          style={{
+                            padding: "8px 12px",
+                            background: token.colorFillQuaternary,
+                            borderRadius: 8,
+                            cursor: intDetails?.events?.some(e => e.barge_in_status === "ignored") ? "pointer" : "default"
+                          }}
+                          onClick={() => {
+                            const match = intDetails?.events?.find(e => e.barge_in_status === "ignored");
+                            if (match) seekAudio(match.start);
+                          }}
+                        >
                           <Text type="secondary" style={{ fontSize: 11, display: "block" }}>Barge-ins Ignored (Double-talk Clash)</Text>
                           <Text style={{ fontSize: 18, fontWeight: 700, color: token.colorError }}>
                             {intDetails?.barge_ins_ignored ?? "—"}
