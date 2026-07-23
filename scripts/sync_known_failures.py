@@ -89,7 +89,7 @@ def validate_failures_schema(data):
 
 def generate_issue_body(failure):
     triggers_markdown = "\n".join(f"- {t}" for t in failure["triggers"])
-    remediation_markdown = "\n".join(f"- {r}" for t in failure["remediation"])
+    remediation_markdown = "\n".join(f"- {r}" for r in failure["remediation"])
     
     component = failure["component"].replace("-", " ").title()
     severity = str(failure["severity"]).title()
