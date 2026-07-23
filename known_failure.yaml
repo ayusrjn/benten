@@ -302,3 +302,87 @@ failures:
       - database
       - sqlite
       - known-failure
+
+  - id: ERR-WK-01
+    component: Workers
+    name: Speech Provider API Error
+
+    severity: high
+    priority: p1
+    status: unhandled
+    category: network
+
+    retryable: true
+    user_visible: true
+
+    triggers:
+      - Speech provider API returns a rate limit or 5xx error during call fetch in app/workers/ingestion.py
+      - Network timeouts in app/workers/ingestion.py connecting to provider gateways
+
+    behavior: >
+      Raises HTTPError or Timeout exception in app/workers/ingestion.py
+      causing Celery tasks in app/workers/tasks.py to fail and retry.
+
+    remediation:
+      - Verify provider API status page.
+      - Ensure outbound connections are not blocked from app/workers/ingestion.py.
+
+    labels:
+      - workers
+      - network
+      - known-failure
+
+  - id: ERR-WK-02
+    component: Workers
+    name: Missing Integration Configuration
+
+    severity: medium
+    priority: p2
+    status: unhandled
+    category: configuration
+
+    retryable: false
+    user_visible: true
+
+    triggers:
+      - Ingest requested for provider with no active database configuration in app/workers/ingestion.py
+
+    behavior: >
+      Raises ValueError in app/workers/ingestion.py and terminates
+      Celery task in app/workers/tasks.py with Error status.
+
+    remediation:
+      - Configure and connect the target voice service provider integration via dashboard settings.
+
+    labels:
+      - workers
+      - configuration
+      - known-failure
+
+  - id: ERR-WK-03
+    component: Workers
+    name: Redis Status Update Failure
+
+    severity: low
+    priority: p3
+    status: handled
+    category: infrastructure
+
+    retryable: false
+    user_visible: false
+
+    triggers:
+      - Redis cache container or cluster is unreachable from app/workers/evaluation.py
+
+    behavior: >
+      Logs connection error in app/workers/evaluation.py, but completes
+      the database transaction in app/workers/evaluation.py successfully.
+
+    remediation:
+      - Check Redis container health status.
+      - Verify Redis settings in config/settings.py matched by app/workers/evaluation.py.
+
+    labels:
+      - workers
+      - redis
+      - known-failure
