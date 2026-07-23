@@ -1,12 +1,12 @@
 import logging
 import torch
 import numpy as np
-from typing import List, Dict, Any
+from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
-# Module-level singleton — shared across all tasks in the same worker process
 _vad_instance = None
+
 
 def get_vad() -> "SileroVADWrapper":
     """Returns the singleton SileroVADWrapper, creating it on first call."""
@@ -15,9 +15,11 @@ def get_vad() -> "SileroVADWrapper":
         _vad_instance = SileroVADWrapper()
     return _vad_instance
 
+
 def preload_vad():
     """Eagerly initialize the VAD model (called at worker startup)."""
     get_vad()
+
 
 class SileroVADWrapper:
     """
@@ -42,13 +44,10 @@ class SileroVADWrapper:
             List[Dict[str, float]]: List of dicts like {'start': float, 'end': float} in seconds.
         """
         logger.info("Running VAD on audio stream")
-        # Ensure audio is 1D (mono)
-        if len(audio_np.shape) > 1 and audio_np.shape[1] > 1:
+        if audio_np.ndim > 1:
             audio_np = np.mean(audio_np, axis=1)
             
         audio_tensor = torch.from_numpy(audio_np).float()
-        if audio_tensor.ndim > 1:
-            audio_tensor = audio_tensor.squeeze()
 
         speech_timestamps = self.get_speech_ts(
             audio_tensor,
@@ -56,11 +55,10 @@ class SileroVADWrapper:
             sampling_rate=sample_rate
         )
         
-        formatted_timestamps = []
-        for ts in speech_timestamps:
-            formatted_timestamps.append({
+        return [
+            {
                 'start': ts['start'] / sample_rate,
                 'end': ts['end'] / sample_rate
-            })
-            
-        return formatted_timestamps
+            }
+            for ts in speech_timestamps
+        ]

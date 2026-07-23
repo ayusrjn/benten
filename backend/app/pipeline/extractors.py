@@ -36,40 +36,33 @@ def calculate_dead_air(speech_segments: List[Dict[str, Any]], call_duration: flo
     logger.debug("Calculating dead air percentage")
     if not speech_segments or call_duration <= 0:
         return 0.0
-        
-    # Sort by start time
+
     sorted_segments = sorted(speech_segments, key=lambda x: x["start"])
-    
-    # Merge overlapping segments
     merged = []
     current_start = sorted_segments[0]["start"]
     current_end = sorted_segments[0]["end"]
-    
+
     for seg in sorted_segments[1:]:
         if seg["start"] <= current_end:
             current_end = max(current_end, seg["end"])
         else:
             merged.append((current_start, current_end))
-            current_start = seg["start"]
-            current_end = seg["end"]
+            current_start, current_end = seg["start"], seg["end"]
     merged.append((current_start, current_end))
-    
+
     total_dead_air = 0.0
-    
-    # Check gap before first segment
-    if merged[0][0] > 1.5:
-        total_dead_air += merged[0][0]
-        
-    # Check gaps between segments
-    for i in range(1, len(merged)):
-        gap = merged[i][0] - merged[i-1][1]
+    last_end = 0.0
+
+    for start, end in merged:
+        gap = start - last_end
         if gap > 1.5:
             total_dead_air += gap
-            
-    # Check gap after last segment
-    if call_duration - merged[-1][1] > 1.5:
-        total_dead_air += call_duration - merged[-1][1]
-        
+        last_end = end
+
+    gap_end = call_duration - last_end
+    if gap_end > 1.5:
+        total_dead_air += gap_end
+
     return (total_dead_air / call_duration) * 100.0
 
 def _normalize_role(role_or_speaker: str) -> str:

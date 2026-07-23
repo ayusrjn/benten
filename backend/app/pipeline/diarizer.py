@@ -88,18 +88,13 @@ class PyAnnoteDiarizer:
         """
         Runs speaker diarization and maps first speaker to Agent.
         """
-
         if self.pipeline is None:
             return []
 
         if audio_np.ndim > 1:
             audio_np = np.mean(audio_np, axis=1)
 
-        waveform = (
-            torch.from_numpy(audio_np)
-            .float()
-            .unsqueeze(0)
-        )
+        waveform = torch.from_numpy(audio_np).float().unsqueeze(0)
 
         try:
             output = self.pipeline(
@@ -109,40 +104,28 @@ class PyAnnoteDiarizer:
                 },
                 num_speakers=2,
             )
-
         except Exception:
             logger.exception("PyAnnote inference failed")
             return []
 
-        #
-        # pyannote.audio 4.x
-        #
         diarization = output.speaker_diarization
-
-        segments = []
-
-        for turn, _, speaker in diarization.itertracks(yield_label=True):
-            segments.append(
-                {
-                    "start": float(turn.start),
-                    "end": float(turn.end),
-                    "speaker_id": speaker,
-                }
-            )
+        segments = [
+            {
+                "start": float(turn.start),
+                "end": float(turn.end),
+                "speaker_id": speaker,
+            }
+            for turn, _, speaker in diarization.itertracks(yield_label=True)
+        ]
 
         if not segments:
             return []
 
         segments.sort(key=lambda x: x["start"])
-
         first_speaker = segments[0]["speaker_id"]
 
         for seg in segments:
-            seg["role"] = (
-                "Agent"
-                if seg["speaker_id"] == first_speaker
-                else "User"
-            )
+            seg["role"] = "Agent" if seg["speaker_id"] == first_speaker else "User"
 
         return segments
 
@@ -156,37 +139,23 @@ class PyAnnoteDiarizer:
         """
         Direct channel mapping for stereo recordings.
         """
-
         if vad_wrapper is None:
             return []
 
         segments = []
+        channels = [
+            (left_channel, "Agent", "Channel_0"),
+            (right_channel, "User", "Channel_1")
+        ]
 
-        for ts in vad_wrapper.get_speech_timestamps(
-            left_channel,
-            sample_rate,
-        ):
-            segments.append(
-                {
+        for data, role, speaker_id in channels:
+            for ts in vad_wrapper.get_speech_timestamps(data, sample_rate):
+                segments.append({
                     "start": ts["start"],
                     "end": ts["end"],
-                    "role": "Agent",
-                    "speaker_id": "Channel_0",
-                }
-            )
-
-        for ts in vad_wrapper.get_speech_timestamps(
-            right_channel,
-            sample_rate,
-        ):
-            segments.append(
-                {
-                    "start": ts["start"],
-                    "end": ts["end"],
-                    "role": "User",
-                    "speaker_id": "Channel_1",
-                }
-            )
+                    "role": role,
+                    "speaker_id": speaker_id,
+                })
 
         segments.sort(key=lambda x: x["start"])
         return segments
