@@ -1,16 +1,12 @@
 import logging
-from typing import Dict, Any, List
-from sqlalchemy.orm import Session
 from datetime import datetime, timezone
-import json
+from sqlalchemy.orm import Session
 
 from .loader import download_audio_stream, load_and_resample_audio, normalize_loudness
-from .vad import get_vad
 from .diarizer import get_diarizer
 from .extractors import (
     calculate_turn_latency,
     calculate_dead_air,
-    calculate_interruptions,
     calculate_detailed_interruptions,
     calculate_speech_rate
 )
@@ -43,23 +39,28 @@ def evaluate_audio(conversation_id: str, audio_url: str):
     Main orchestration function for the audio analysis pipeline.
     Uses detached short DB sessions to prevent PostgreSQL socket timeouts during heavy ML model processing.
     """
+    import uuid
+    if isinstance(conversation_id, str):
+        conversation_id = uuid.UUID(conversation_id)
+
     logger.info(f"Starting audio evaluation for conversation {conversation_id}")
     
-    # 1. Fetch initial metadata in short DB session
+    # 1. Fetch initial metadata and segments in short DB session
     db: Session = SessionLocal()
     try:
-        conversation = db.query(Conversation).filter(Conversation.id == str(conversation_id)).first()
+        conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
         if not conversation:
             logger.error(f"Conversation {conversation_id} not found in database.")
             return
             
         db_segments = db.query(SpeechSegment).filter(SpeechSegment.conversation_id == conversation.id).all()
-        # Copy segments into pure python dicts so session can be safely closed
-        db_seg_data = [
+        db_had_segments = bool(db_segments)
+        # Normalize segments list to standard dictionary schema: {"start", "end", "role", "text"}
+        segments = [
             {
-                "start_sec": float(s.start_sec),
-                "end_sec": float(s.end_sec),
-                "speaker": s.speaker,
+                "start": float(s.start_sec),
+                "end": float(s.end_sec),
+                "role": "Agent" if s.speaker == "agent" else "User",
                 "text": s.text or ""
             }
             for s in db_segments
@@ -77,70 +78,42 @@ def evaluate_audio(conversation_id: str, audio_url: str):
         # --- KEY OPTIMIZATION: Skip diarization when provider transcripts exist ---
         # Providers (ElevenLabs, Vapi, Retell) already supply speaker-labeled segments.
         # PyAnnote diarization takes ~190s and is only needed when no segments exist.
-        has_provider_segments = bool(db_seg_data)
-
-        if has_provider_segments:
-            logger.info(
-                f"Skipping diarization — using {len(db_seg_data)} existing provider segments"
-            )
-            sorted_segs = sorted(db_seg_data, key=lambda s: s["start_sec"])
-            latencies = []
-            total_speech_duration = 0.0
-            total_words = 0
-
-            for i, seg in enumerate(sorted_segs):
-                start = seg["start_sec"]
-                end = seg["end_sec"]
-                total_speech_duration += max(0.0, end - start)
-                if seg["text"]:
-                    total_words += len(seg["text"].split())
-
-                if i > 0:
-                    prev_seg = sorted_segs[i - 1]
-                    prev_end = prev_seg["end_sec"]
-                    if prev_seg["speaker"] == "user" and seg["speaker"] == "agent":
-                        pause = start - prev_end
-                        if pause >= 0:
-                            latencies.append(pause)
-
-            interruption_details = calculate_detailed_interruptions(db_seg_data, call_duration)
-            interruptions = interruption_details["total_interruption_events"]
-            avg_latency_sec = (sum(latencies) / len(latencies)) if latencies else 0.5
-            latency_sec = avg_latency_sec
-            dead_air_sec = max(0.0, call_duration - total_speech_duration)
-            dead_air = round((dead_air_sec / call_duration) * 100.0, 2) if call_duration > 0 else 0.0
-            speech_rate = int(round((total_words / (total_speech_duration / 60.0)))) if total_speech_duration > 0 else 140
-            text_bearing_segs = []
+        if segments:
+            logger.info(f"Skipping diarization — using {len(segments)} existing provider segments")
         else:
             logger.info("No provider segments found — running PyAnnote diarization")
             diarizer = get_diarizer()
             segments = diarizer.diarize_mono(audio_np, sample_rate)
-            text_bearing_segs = [s for s in segments if s.get("text")]
 
-            if segments:
-                latency_sec = calculate_turn_latency(segments)
-                dead_air = calculate_dead_air(segments, call_duration)
-                interruption_details = calculate_detailed_interruptions(segments, call_duration)
-                interruptions = interruption_details["total_interruption_events"]
-                speech_rate = calculate_speech_rate(segments)
-            else:
+        # Extract audio metrics of interest using common extraction algorithms
+        if segments:
+            latency_sec = calculate_turn_latency(segments)
+            # Default to 0.5 sec response latency if provider segments exist but no response turns found
+            if db_had_segments and latency_sec == 0.0:
                 latency_sec = 0.5
-                dead_air = 0.0
-                interruption_details = calculate_detailed_interruptions([], call_duration)
-                interruptions = 0
-                speech_rate = 140
+            dead_air = calculate_dead_air(segments, call_duration)
+            interruption_details = calculate_detailed_interruptions(segments, call_duration)
+            speech_rate = calculate_speech_rate(segments)
+        else:
+            latency_sec = 0.5
+            dead_air = 0.0
+            interruption_details = calculate_detailed_interruptions([], call_duration)
+            speech_rate = 140
 
+        interruptions = interruption_details["total_interruption_events"]
         mos_score = score_voice_quality_nisqa(audio_np, sample_rate)
-        transcript_text = " ".join([s["text"] for s in db_seg_data if s["text"]]) if db_seg_data else " ".join([seg.get("text", "") for seg in text_bearing_segs if "text" in seg])
+        transcript_text = " ".join(s["text"] for s in segments if s.get("text"))
         sentiment = score_sentiment_roberta(transcript_text)
-        primary_emotion = None
-        if sentiment:
-            primary_emotion = max(sentiment.items(), key=lambda x: x[1])[0]
+        primary_emotion = max(sentiment.items(), key=lambda x: x[1])[0] if sentiment else None
+        
+        # Save new speech segments if they were newly generated by the diarizer
+        text_bearing_segs = [] if db_had_segments else [s for s in segments if s.get("text")]
+        
     except Exception as ml_err:
         logger.error(f"Error during ML audio analysis for {conversation_id}: {ml_err}")
         db = SessionLocal()
         try:
-            conv = db.query(Conversation).filter(Conversation.id == str(conversation_id)).first()
+            conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
             if conv:
                 conv.status = "Error"
                 db.commit()
@@ -151,13 +124,13 @@ def evaluate_audio(conversation_id: str, audio_url: str):
     # 3. Save Final Results in a Fresh Short DB Session
     db = SessionLocal()
     try:
-        conversation = db.query(Conversation).filter(Conversation.id == str(conversation_id)).first()
+        conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
         if not conversation:
             logger.error(f"Conversation {conversation_id} not found when committing evaluation.")
             return
 
         conversation.duration_sec = int(call_duration)
-        conversation.latency_ms = int(latency_sec * 1000)
+        conversation.latency_ms = int(round(latency_sec * 1000))
         conversation.dead_air_percent = dead_air
         conversation.interruptions = interruptions
         conversation.speech_rate_wpm = int(speech_rate)
@@ -201,7 +174,7 @@ def evaluate_audio(conversation_id: str, audio_url: str):
         logger.error(f"Error saving audio evaluation results for {conversation_id}: {save_err}")
         db.rollback()
         try:
-            conv = db.query(Conversation).filter(Conversation.id == str(conversation_id)).first()
+            conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
             if conv:
                 conv.status = "Error"
                 db.commit()

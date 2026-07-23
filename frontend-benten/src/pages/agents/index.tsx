@@ -532,10 +532,10 @@ export const AgentsPage: React.FC = () => {
                           !hasCalls
                             ? "default"
                             : agent.healthScore >= 80
-                            ? "success"
-                            : agent.healthScore >= 60
-                            ? "warning"
-                            : "error"
+                              ? "success"
+                              : agent.healthScore >= 60
+                                ? "warning"
+                                : "error"
                         }
                       />
                       <Text
@@ -544,10 +544,10 @@ export const AgentsPage: React.FC = () => {
                           color: !hasCalls
                             ? "#8c8c8c"
                             : agent.healthScore >= 80
-                            ? "#52c41a"
-                            : agent.healthScore >= 60
-                            ? "#faad14"
-                            : "#ff4d4f",
+                              ? "#52c41a"
+                              : agent.healthScore >= 60
+                                ? "#faad14"
+                                : "#ff4d4f",
                         }}
                       >
                         {hasCalls ? `${agent.healthScore} Score` : "Unrated"}
@@ -692,9 +692,9 @@ export const AgentsPage: React.FC = () => {
                       <ClockCircleOutlined style={{ marginRight: 4 }} />
                       {agent.lastSyncedAt
                         ? `Synced ${new Date(agent.lastSyncedAt).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}`
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}`
                         : "Synced"}
                     </Text>
 
@@ -805,8 +805,8 @@ export const AgentsPage: React.FC = () => {
                                   selectedAgent.conversationsCount === 0
                                     ? "#8c8c8c"
                                     : selectedAgent.healthScore >= 80
-                                    ? "#52c41a"
-                                    : "#faad14",
+                                      ? "#52c41a"
+                                      : "#faad14",
                               }}
                             />
                           </Col>

@@ -38,6 +38,16 @@ import { useNavigate } from "react-router";
 
 const { Title, Text, Paragraph } = Typography;
 
+interface DashboardIntegration {
+  id: string;
+  name: string;
+  connected: boolean;
+  apiKey: string;
+  webhookUrl: string | null;
+  config: any;
+  lastSyncedAt?: string | null;
+}
+
 interface DashboardAlert {
   id: string;
   title: string;
@@ -186,9 +196,40 @@ export const Dashboard: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [integrations, setIntegrations] = useState<DashboardIntegration[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isLive, setIsLive] = useState<boolean>(false);
+
+  const fetchIntegrations = async () => {
+    try {
+      const tokenVal = localStorage.getItem(TOKEN_KEY);
+      const response = await fetch(`${API_URL}/integrations`, {
+        headers: {
+          Authorization: `Bearer ${tokenVal}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setIntegrations(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch integrations:", err);
+    }
+  };
+
+  const getIntegrationStatus = (providerId: string) => {
+    const integration = integrations.find(i => i.id === providerId);
+    if (!integration) {
+      return { connected: false, statusText: "Disconnected", percent: 0 };
+    }
+    if (integration.connected) {
+      const statusText = providerId === "vapi" ? "Webhook Connected" :
+                         providerId === "retell" ? "API Key Active" : "Synced";
+      return { connected: true, statusText, percent: 100 };
+    }
+    return { connected: false, statusText: "Disconnected", percent: 0 };
+  };
 
   const fetchMetrics = async () => {
     try {
@@ -206,6 +247,7 @@ export const Dashboard: React.FC = () => {
       const data = await response.json();
       setMetrics(data);
       setError(null);
+      await fetchIntegrations();
     } catch (err: any) {
       console.error(err);
       setError(err.message || "An error occurred while loading dashboard metrics.");
@@ -569,29 +611,50 @@ export const Dashboard: React.FC = () => {
               bodyStyle={{ padding: "16px" }}
             >
               <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <Text strong style={{ fontSize: 13, color: "#8b5cf6" }}>Vapi AI</Text>
-                    <Text type="secondary" style={{ fontSize: 12 }}>Webhook Connected</Text>
-                  </div>
-                  <Progress percent={100} strokeColor="#8b5cf6" size="small" />
-                </div>
+                {(() => {
+                  const status = getIntegrationStatus("vapi");
+                  return (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <Text strong style={{ fontSize: 13, color: "#8b5cf6" }}>Vapi AI</Text>
+                        <Text type={status.connected ? "secondary" : "danger"} style={{ fontSize: 12 }}>
+                          {status.statusText}
+                        </Text>
+                      </div>
+                      <Progress percent={status.percent} strokeColor={status.connected ? "#8b5cf6" : "#d9d9d9"} size="small" />
+                    </div>
+                  );
+                })()}
 
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <Text strong style={{ fontSize: 13, color: "#10b981" }}>Retell AI</Text>
-                    <Text type="secondary" style={{ fontSize: 12 }}>API Key Active</Text>
-                  </div>
-                  <Progress percent={100} strokeColor="#10b981" size="small" />
-                </div>
+                {(() => {
+                  const status = getIntegrationStatus("retell");
+                  return (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <Text strong style={{ fontSize: 13, color: "#10b981" }}>Retell AI</Text>
+                        <Text type={status.connected ? "secondary" : "danger"} style={{ fontSize: 12 }}>
+                          {status.statusText}
+                        </Text>
+                      </div>
+                      <Progress percent={status.percent} strokeColor={status.connected ? "#10b981" : "#d9d9d9"} size="small" />
+                    </div>
+                  );
+                })()}
 
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <Text strong style={{ fontSize: 13, color: "#f59e0b" }}>ElevenLabs Conversational AI</Text>
-                    <Text type="secondary" style={{ fontSize: 12 }}>Synced</Text>
-                  </div>
-                  <Progress percent={100} strokeColor="#f59e0b" size="small" />
-                </div>
+                {(() => {
+                  const status = getIntegrationStatus("elevenlabs");
+                  return (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <Text strong style={{ fontSize: 13, color: "#f59e0b" }}>ElevenLabs Conversational AI</Text>
+                        <Text type={status.connected ? "secondary" : "danger"} style={{ fontSize: 12 }}>
+                          {status.statusText}
+                        </Text>
+                      </div>
+                      <Progress percent={status.percent} strokeColor={status.connected ? "#f59e0b" : "#d9d9d9"} size="small" />
+                    </div>
+                  );
+                })()}
 
                 <Button
                   type="dashed"
