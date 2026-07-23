@@ -1,0 +1,304 @@
+version: 1
+
+metadata:
+  project: Benten
+  description: Known failures tracked by the evaluation pipeline.
+  generated: false
+
+failures:
+  - id: ERR-PL-01
+    component: Pipeline-Loader
+    name: Empty Audio URL
+
+    severity: high
+    priority: p1
+    status: unhandled
+    category: input-validation
+
+    retryable: false
+    user_visible: true
+
+    triggers:
+      - Audio URL parameter is empty
+      - Audio URL parameter is missing
+
+    behavior: >
+      Raises ValueError and terminates task execution with
+      Error status.
+
+    remediation:
+      - Validate the audio URL before pipeline execution.
+      - Return a client validation error.
+
+    labels:
+      - bug
+      - pipeline-loader
+      - input-validation
+      - known-failure
+
+  - id: ERR-PL-02
+    component: Pipeline-Loader
+    name: Missing Local Audio
+
+    severity: medium
+    priority: p2
+    status: handled
+    category: fallback
+
+    retryable: true
+    user_visible: false
+
+    triggers:
+      - Relative local static file path does not exist
+
+    behavior: >
+      Falls back to downloading the audio from the local
+      server HTTP endpoint.
+
+    remediation:
+      - Verify static file paths.
+      - Ensure local HTTP endpoint is available.
+
+    labels:
+      - fallback
+      - pipeline-loader
+      - known-failure
+
+  - id: ERR-PL-03
+    component: Pipeline-Loader
+    name: Network Download Failure
+
+    severity: high
+    priority: p1
+    status: unhandled
+    category: network
+
+    retryable: true
+    user_visible: true
+
+    triggers:
+      - Connection timeout
+      - Non-200 HTTP response
+      - DNS resolution failure
+
+    behavior: >
+      Raises HTTPError and terminates task execution.
+
+    remediation:
+      - Retry download.
+      - Verify remote endpoint availability.
+
+    labels:
+      - bug
+      - network
+      - pipeline-loader
+      - known-failure
+
+  - id: ERR-PL-04
+    component: Pipeline-ML
+    name: Audio Decoder Failure
+
+    severity: medium
+    priority: p2
+    status: handled
+    category: audio-processing
+
+    retryable: false
+    user_visible: false
+
+    triggers:
+      - Invalid codec
+      - Corrupted audio headers
+      - Unsupported audio format
+
+    behavior: >
+      Falls back to dynamic transcript segment evaluation.
+
+    remediation:
+      - Validate uploaded audio.
+      - Re-encode unsupported formats.
+
+    labels:
+      - audio
+      - fallback
+      - pipeline-ml
+      - known-failure
+
+  - id: ERR-PL-05
+    component: Pipeline-ML
+    name: PyAnnote Import Failure
+
+    severity: medium
+    priority: p2
+    status: handled
+    category: dependency
+
+    retryable: false
+    user_visible: false
+
+    triggers:
+      - pyannote-audio package missing
+
+    behavior: >
+      Speaker diarization is skipped and an empty segment
+      list is returned.
+
+    remediation:
+      - Install pyannote-audio.
+      - Verify Python environment.
+
+    labels:
+      - dependency
+      - pyannote
+      - pipeline-ml
+      - known-failure
+
+  - id: ERR-PL-06
+    component: Pipeline-ML
+    name: Diarizer Token Failure
+
+    severity: medium
+    priority: p2
+    status: handled
+    category: configuration
+
+    retryable: false
+    user_visible: false
+
+    triggers:
+      - Missing Hugging Face token
+      - Invalid Hugging Face token
+
+    behavior: >
+      Logs a warning and skips PyAnnote pipeline
+      initialization.
+
+    remediation:
+      - Configure HF_TOKEN.
+      - Verify token permissions.
+
+    labels:
+      - configuration
+      - authentication
+      - pipeline-ml
+      - known-failure
+
+  - id: ERR-PL-07
+    component: Pipeline-ML
+    name: VAD Hub Download Failure
+
+    severity: high
+    priority: p1
+    status: unhandled
+    category: dependency
+
+    retryable: true
+    user_visible: true
+
+    triggers:
+      - No internet connection
+      - Torch Hub download failure
+
+    behavior: >
+      Raises a download error and terminates task
+      execution.
+
+    remediation:
+      - Retry checkpoint download.
+      - Verify internet connectivity.
+
+    labels:
+      - dependency
+      - network
+      - pipeline-ml
+      - known-failure
+
+  - id: ERR-PL-08
+    component: Pipeline-ML
+    name: NISQA Import or Model Failure
+
+    severity: medium
+    priority: p2
+    status: handled
+    category: dependency
+
+    retryable: false
+    user_visible: false
+
+    triggers:
+      - PyTorch missing
+      - TorchMetrics missing
+      - NISQA model unavailable
+
+    behavior: >
+      Logs a warning and falls back to the default MOS
+      quality score of 4.0.
+
+    remediation:
+      - Install required dependencies.
+      - Verify NISQA model availability.
+
+    labels:
+      - dependency
+      - nisqa
+      - pipeline-ml
+      - known-failure
+
+  - id: ERR-PL-09
+    component: Pipeline-ML
+    name: RoBERTa Model Failure
+
+    severity: medium
+    priority: p2
+    status: handled
+    category: model-loading
+
+    retryable: false
+    user_visible: false
+
+    triggers:
+      - Transformers package missing
+      - Model checkpoint unavailable
+      - Model loading failure
+
+    behavior: >
+      Logs an error and returns the default sentiment map:
+
+      {"neutral": 1.0}
+
+    remediation:
+      - Install transformers.
+      - Verify checkpoint availability.
+
+    labels:
+      - transformers
+      - sentiment
+      - pipeline-ml
+      - known-failure
+
+  - id: ERR-DB-01
+    component: Database
+    name: UUID Session Dialect Mismatch
+
+    severity: medium
+    priority: p2
+    status: handled
+    category: database
+
+    retryable: false
+    user_visible: false
+
+    triggers:
+      - Raw conversation ID string passed directly to database queries
+
+    behavior: >
+      Converts the identifier to uuid.UUID before database
+      operations, ensuring compatibility with SQLite.
+
+    remediation:
+      - Always normalize UUIDs at the pipeline entry point.
+
+    labels:
+      - database
+      - sqlite
+      - known-failure
