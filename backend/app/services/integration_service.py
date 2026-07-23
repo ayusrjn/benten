@@ -1,24 +1,41 @@
 import logging
-from typing import List, Dict, Any, Tuple
+import requests
+from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
 
 from app.models.integration import Integration
 from app.models.agent import Agent
 from app.api.security_crypto import encrypt_secret, decrypt_secret
-from app.services.project_service import PROVIDER_KEY_TO_NAME, PROVIDER_NAME_TO_KEY
+from app.services.project_service import PROVIDER_KEY_TO_NAME
 from app.workers.tasks import CONNECTORS
 
 logger = logging.getLogger(__name__)
+
+PROVIDER_CONFS = {
+    "vapi": {
+        "url": "https://api.vapi.ai/assistant",
+        "method": "GET",
+        "headers": lambda key: {"Authorization": f"Bearer {key}"},
+        "params": {"limit": 1}
+    },
+    "retell": {
+        "url": "https://api.retellai.com/v3/list-calls",
+        "method": "POST",
+        "headers": lambda key: {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        "json": {}
+    },
+    "elevenlabs": {
+        "url": "https://api.elevenlabs.io/v1/convai/agents",
+        "method": "GET",
+        "headers": lambda key: {"xi-api-key": key}
+    }
+}
 
 
 class IntegrationService:
     @staticmethod
     def verify_api_key(provider_id: str, api_key: str) -> Tuple[bool, str]:
-        """
-        Validates an API key against provider API endpoints.
-        """
         provider_name = PROVIDER_KEY_TO_NAME.get(provider_id.lower())
         if not provider_name:
             return False, f"Integration provider '{provider_id}' not found"
@@ -26,38 +43,30 @@ class IntegrationService:
         if api_key == "mock" or api_key.startswith("mock_"):
             return True, f"Successfully connected to Mock {provider_name} service!"
 
-        try:
-            import requests
-            if provider_id.lower() == "vapi":
-                url = "https://api.vapi.ai/assistant"
-                headers = {"Authorization": f"Bearer {api_key}"}
-                res = requests.get(url, headers=headers, params={"limit": 1}, timeout=10)
-            elif provider_id.lower() == "retell":
-                url = "https://api.retellai.com/v3/list-calls"
-                headers = {
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                }
-                res = requests.post(url, headers=headers, json={}, timeout=10)
-            elif provider_id.lower() == "elevenlabs":
-                url = "https://api.elevenlabs.io/v1/convai/agents"
-                headers = {"xi-api-key": api_key}
-                res = requests.get(url, headers=headers, timeout=10)
-            else:
-                return True, f"Connection parameters valid for {provider_name}"
+        pid = provider_id.lower()
+        if pid not in PROVIDER_CONFS:
+            return True, f"Connection parameters valid for {provider_name}"
 
+        conf = PROVIDER_CONFS[pid]
+        try:
+            res = requests.request(
+                method=conf["method"],
+                url=conf["url"],
+                headers=conf["headers"](api_key),
+                params=conf.get("params"),
+                json=conf.get("json"),
+                timeout=10
+            )
             if res.status_code == 200:
                 return True, f"Successfully connected to {provider_name} API!"
-            elif res.status_code in (401, 403):
+            if res.status_code in (401, 403):
                 return False, "Invalid API key or unauthorized access."
-            else:
-                return False, f"Provider API returned error status: {res.status_code}"
-
+            return False, f"Provider API returned error status: {res.status_code}"
         except Exception as e:
             return False, f"Failed to connect to provider: {str(e)}"
 
     @staticmethod
-    def get_decrypted_key(integration: Integration) -> str | None:
+    def get_decrypted_key(integration: Integration) -> Optional[str]:
         if not integration or not integration.api_key:
             return None
         return decrypt_secret(integration.api_key)
@@ -77,16 +86,12 @@ class IntegrationService:
             integration.api_key = None
             integration.connected = False
         else:
-            encrypted = encrypt_secret(raw_api_key.strip())
-            integration.api_key = encrypted
+            integration.api_key = encrypt_secret(raw_api_key.strip())
             integration.connected = True
         db.commit()
 
     @staticmethod
     def sync_agents(db: Session, project_id: Any, provider: str, raw_api_key: str) -> List[Agent]:
-        """
-        Discovers and upserts agents from provider connector into database.
-        """
         provider_key = provider.lower()
         connector_cls = CONNECTORS.get(provider_key)
         if not connector_cls:

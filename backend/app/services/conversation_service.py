@@ -1,46 +1,48 @@
 import uuid
-import logging
 from typing import List, Optional, Tuple, Dict, Any
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 
 from app.models.conversation import Conversation, SpeechSegment
 from app.models.agent import Agent
+from app.schemas.conversation import ConversationResponse, SpeechSegmentResponse
+from app.pipeline.extractors import calculate_detailed_interruptions
 
-logger = logging.getLogger(__name__)
+SORT_MAP = {
+    "score": Conversation.health_score,
+    "health_score": Conversation.health_score,
+    "duration": Conversation.duration_sec,
+    "duration_sec": Conversation.duration_sec,
+    "date": Conversation.created_at,
+    "created_at": Conversation.created_at,
+}
 
 def format_duration(seconds: int) -> str:
     if not seconds:
         return "0s"
-    if seconds < 60:
-        return f"{seconds}s"
-    minutes = seconds // 60
-    rem_seconds = seconds % 60
-    if rem_seconds == 0:
-        return f"{minutes}m"
-    return f"{minutes}m {rem_seconds}s"
+    minutes, rem = divmod(seconds, 60)
+    if not minutes:
+        return f"{rem}s"
+    return f"{minutes}m {rem}s" if rem else f"{minutes}m"
+
 
 def calculate_grade(score: Optional[int]) -> Optional[str]:
     if score is None:
         return None
     if score >= 95:
         return "A+"
-    elif score >= 90:
+    if score >= 90:
         return "A"
-    elif score >= 80:
+    if score >= 80:
         return "B"
-    elif score >= 70:
+    if score >= 70:
         return "C"
-    else:
-        return "F"
+    return "F"
 
 
 class ConversationService:
     @staticmethod
-    def get_conversation_with_relations(db: Session, conversation_id: uuid.UUID, project_id: Optional[uuid.UUID] = None) -> Conversation | None:
-        """
-        Retrieves a single conversation with eager-loaded speech_segments and agent.
-        """
+    def get_conversation_with_relations(db: Session, conversation_id: uuid.UUID, project_id: Optional[uuid.UUID] = None) -> Optional[Conversation]:
         query = db.query(Conversation).options(
             joinedload(Conversation.speech_segments),
             joinedload(Conversation.agent)
@@ -70,28 +72,20 @@ class ConversationService:
         order: Optional[str] = None,
         q: Optional[str] = None
     ) -> Tuple[List[Conversation], int]:
-        """
-        Lists project conversations using eager loading (`joinedload`) to prevent N+1 query overhead.
-        Returns (conversations_list, total_count).
-        """
         query = db.query(Conversation).options(
             joinedload(Conversation.speech_segments),
             joinedload(Conversation.agent)
         ).filter(Conversation.project_id == project_id)
 
-        # Filter by Agent
         if agent_id:
             query = query.filter(Conversation.agent_id == agent_id)
 
-        # Filter by Provider
         if provider and provider.lower() != "all":
             query = query.filter(Conversation.provider.ilike(provider.lower()))
 
-        # Filter by Status
         if status and status.lower() != "all":
             query = query.filter(Conversation.status.ilike(status))
 
-        # Filter by Grade / Score
         if grade:
             g = grade.upper()
             if g in ("A+", "A"):
@@ -109,18 +103,15 @@ class ConversationService:
         if max_score is not None:
             query = query.filter(Conversation.health_score <= max_score)
 
-        # Filter by Duration
         if min_duration is not None:
             query = query.filter(Conversation.duration_sec >= min_duration)
 
         if max_duration is not None:
             query = query.filter(Conversation.duration_sec <= max_duration)
 
-        # Filter by Max Latency
         if max_latency is not None:
             query = query.filter(Conversation.latency_ms <= max_latency)
 
-        # Multi-field search
         if q:
             query = query.outerjoin(Agent).filter(
                 or_(
@@ -131,42 +122,24 @@ class ConversationService:
                 )
             )
 
-        # Total count before pagination
         total = query.count()
 
-        # Sorting
         if sort:
-            col = None
-            if sort in ("score", "health_score"):
-                col = Conversation.health_score
-            elif sort in ("duration", "duration_sec"):
-                col = Conversation.duration_sec
-            elif sort in ("date", "created_at"):
-                col = Conversation.created_at
-            else:
-                col = getattr(Conversation, sort, None)
-
+            col = SORT_MAP.get(sort) or getattr(Conversation, sort, None)
             if col is not None:
-                if order and order.lower() == "desc":
-                    query = query.order_by(col.desc())
-                else:
-                    query = query.order_by(col.asc())
+                query = query.order_by(col.desc() if order and order.lower() == "desc" else col.asc())
         else:
             query = query.order_by(Conversation.created_at.desc())
 
-        # Pagination
         if start is not None and end is not None:
             query = query.offset(start).limit(end - start)
 
-        conversations = query.all()
-        return conversations, total
+        return query.all(), total
 
     @staticmethod
-    def map_conversation_to_response(db: Session, c: Conversation) -> Any:
-        from app.schemas.conversation import ConversationResponse, SpeechSegmentResponse
+    def map_conversation_to_response(db: Session, c: Conversation) -> ConversationResponse:
         agent_name = c.agent.name if c.agent else "Unknown Agent"
 
-        # Use pre-loaded speech_segments if available via joinedload (avoids N+1 query)
         segments = c.speech_segments if hasattr(c, "speech_segments") and c.speech_segments is not None else db.query(SpeechSegment).filter(
             SpeechSegment.conversation_id == c.id
         ).order_by(SpeechSegment.start_sec.asc()).all()
@@ -184,7 +157,6 @@ class ConversationService:
 
         date_str = c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else ""
 
-        # Real detected issues calculation based strictly on metrics
         detected_issues = []
         if c.latency_ms and c.latency_ms > 1000:
             detected_issues.append(f"Average latency exceeded {c.latency_ms}ms")
@@ -193,14 +165,13 @@ class ConversationService:
         if c.interruptions and c.interruptions > 4:
             detected_issues.append(f"Frequent user interruptions count: {c.interruptions}")
         if c.primary_emotion in ["frustrated", "angry"]:
-            detected_issues.append(f"User exhibited frustration markers")
+            detected_issues.append("User exhibited frustration markers")
 
         raw_meta = c.raw_metrics_json or {}
         emotion_timeline = raw_meta.get("emotion_timeline", [])
 
         interruption_details = raw_meta.get("interruption_details")
         if not interruption_details and sorted_segments:
-            from app.pipeline.extractors import calculate_detailed_interruptions
             seg_dicts = [
                 {"start": float(s.start_sec), "end": float(s.end_sec), "role": s.speaker}
                 for s in sorted_segments
