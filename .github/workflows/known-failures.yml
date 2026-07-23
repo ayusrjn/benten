@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - known_failure.yaml
+      - scripts/sync_known_failures.py
 
   workflow_dispatch:
 
