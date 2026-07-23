@@ -386,3 +386,90 @@ failures:
       - workers
       - redis
       - known-failure
+
+  - id: ERR-SV-01
+    component: Services
+    name: Decryption Cipher Text Corrupted
+    severity: high
+    priority: p1
+    status: unhandled
+    category: security
+    retryable: false
+    user_visible: true
+    triggers:
+      - Invalid or corrupted cipher data passed to decrypt_secret in app/services/integration_service.py
+      - Missing or mismatched encryption secret key configuration in global environment
+    behavior: >
+      Raises cryptography.fernet.InvalidToken or ValueError in app/services/integration_service.py,
+      crashing API requests that load agent credentials (e.g. sync_agents).
+    remediation:
+      - Verify secret key is set correctly in environment settings.
+      - Fall back to masking/deleting corrupt integrations rather than raising a system exception.
+    labels:
+      - services
+      - security
+      - known-failure
+
+  - id: ERR-SV-02
+    component: Services
+    name: Provider API Credentials Validation Timeout
+    severity: medium
+    priority: p2
+    status: handled
+    category: network
+    retryable: true
+    user_visible: true
+    triggers:
+      - DNS resolution failures or timeout when connecting to vapi.ai, retellai.com, or elevenlabs.io in app/services/integration_service.py
+    behavior: >
+      Catches requests.RequestException or requests.Timeout in app/services/integration_service.py
+      and returns False along with the socket error reason to the API caller.
+    remediation:
+      - Confirm outbound proxy or network connection is active.
+      - Double check supplier status pages.
+    labels:
+      - services
+      - network
+      - known-failure
+
+  - id: ERR-SV-03
+    component: Services
+    name: Database Integrity Concurrency Conflict
+    severity: medium
+    priority: p2
+    status: unhandled
+    category: database
+    retryable: true
+    user_visible: false
+    triggers:
+      - Simultaneous API requests initiating get_or_create_user_project for a single user in app/services/project_service.py
+    behavior: >
+      Raises sqlalchemy.exc.IntegrityError from unique indexes when the transaction commits
+      due to concurrent creation of Organization or Member records.
+    remediation:
+      - Implement transaction locks or handle IntegrityError by rolling back and retrying the query.
+    labels:
+      - services
+      - database
+      - known-failure
+
+  - id: ERR-SV-04
+    component: Services
+    name: Corrupt Audio Speech Segment Timestamps
+    severity: medium
+    priority: p2
+    status: unhandled
+    category: data-parsing
+    retryable: false
+    user_visible: true
+    triggers:
+      - SpeechSegment audio offset fields (start_sec, end_sec) contain corrupted strings in app/services/conversation_service.py
+    behavior: >
+      Raises ValueError when casting start_sec or end_sec to floats during list/serialization serialization
+      in app/services/conversation_service.py, breaking list API responses.
+    remediation:
+      - Sanitize SpeechSegment start/end timestamps during ingestion to guarantee float compatibility.
+    labels:
+      - services
+      - data-parsing
+      - known-failure
