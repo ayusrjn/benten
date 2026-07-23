@@ -1,5 +1,6 @@
 import io
 import logging
+import os
 import requests
 import numpy as np
 import pyloudnorm as pyln
@@ -8,7 +9,6 @@ from typing import BinaryIO, Tuple
 
 logger = logging.getLogger(__name__)
 
-import os
 
 def download_audio_stream(audio_url: str) -> io.BytesIO:
     """
@@ -19,7 +19,6 @@ def download_audio_stream(audio_url: str) -> io.BytesIO:
     if not audio_url:
         raise ValueError("Audio URL is empty or not available")
 
-    # Handle relative static paths
     if audio_url.startswith("/static/"):
         storage_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "storage", "audio"))
         filename = os.path.basename(audio_url)
@@ -30,16 +29,11 @@ def download_audio_stream(audio_url: str) -> io.BytesIO:
             with open(local_filepath, "rb") as f:
                 return io.BytesIO(f.read())
         else:
-            # Fallback to local server HTTP request
             audio_url = f"http://localhost:8000{audio_url}"
 
-    response = requests.get(audio_url, stream=True, timeout=30)
+    response = requests.get(audio_url, timeout=30)
     response.raise_for_status()
-    buffer = io.BytesIO()
-    for chunk in response.iter_content(chunk_size=8192):
-        buffer.write(chunk)
-    buffer.seek(0)
-    return buffer
+    return io.BytesIO(response.content)
 
 def load_and_resample_audio(audio_data: BinaryIO, target_sample_rate: int = 16000) -> Tuple[np.ndarray, int]:
     """
