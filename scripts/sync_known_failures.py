@@ -18,72 +18,50 @@ def validate_failures_schema(data):
     Validates that the loaded YAML data conforms to the schema rules.
     If invalid, prints error and exits non-zero.
     """
-    if not isinstance(data, dict):
-        log_error_and_exit("YAML content must be a dictionary at the top level.")
+    if not isinstance(data, dict) or "failures" not in data or not isinstance(data["failures"], list):
+        log_error_and_exit("Invalid YAML. Top level must contain a dictionary with a 'failures' list.")
 
-    failures = data.get("failures")
-    if failures is None:
-        log_error_and_exit("Missing required top-level field 'failures'.")
-    if not isinstance(failures, list):
-        log_error_and_exit("'failures' must be a list.")
-
-    # Validation constraints
-    allowed_severities = {"critical", "high", "medium", "low"}
-    allowed_priorities = {"p0", "p1", "p2", "p3"}
-    allowed_statuses = {"handled", "unhandled", "fixed"}
-
+    failures = data["failures"]
+    allowed = {
+        "severity": {"critical", "high", "medium", "low"},
+        "priority": {"p0", "p1", "p2", "p3"},
+        "status": {"handled", "unhandled", "fixed"}
+    }
+    required_fields = [
+        "id", "name", "component", "severity", "priority", 
+        "status", "category", "triggers", "behavior", "remediation", "labels"
+    ]
     seen_ids = set()
 
     for idx, failure in enumerate(failures):
         if not isinstance(failure, dict):
-            log_error_and_exit(f"Failure at index {idx} must be a dictionary.")
+            log_error_and_exit(f"Failure entry at index {idx} must be a dictionary.")
 
-        # Required fields in each failure entry
-        required_fields = [
-            "id", "name", "component", "severity", "priority", 
-            "status", "category", "triggers", "behavior", "remediation", "labels"
-        ]
+        # Check required fields
         for field in required_fields:
             if field not in failure or failure[field] is None:
-                log_error_and_exit(f"Failure entry at index {idx} is missing required field: '{field}'")
+                log_error_and_exit(f"Failure at index {idx} is missing required field: '{field}'")
 
         fid = failure["id"]
-        # Unique IDs assertion
         if fid in seen_ids:
             log_error_and_exit(f"Duplicate failure ID detected: '{fid}'")
         seen_ids.add(fid)
 
-        # Value constraints validation
-        severity = str(failure["severity"]).lower()
-        if severity not in allowed_severities:
-            log_error_and_exit(f"Failure '{fid}' has invalid severity '{failure['severity']}'. Allowed: {allowed_severities}")
+        # Value constraint checks
+        for key, allowed_vals in allowed.items():
+            val = str(failure[key]).lower()
+            if val not in allowed_vals:
+                log_error_and_exit(f"Failure '{fid}' has invalid {key} '{failure[key]}'. Allowed: {allowed_vals}")
 
-        priority = str(failure["priority"]).lower()
-        if priority not in allowed_priorities:
-            log_error_and_exit(f"Failure '{fid}' has invalid priority '{failure['priority']}'. Allowed: {allowed_priorities}")
-
-        status = str(failure["status"]).lower()
-        if status not in allowed_statuses:
-            log_error_and_exit(f"Failure '{fid}' has invalid status '{failure['status']}'. Allowed: {allowed_statuses}")
-
-        # List/Array type checks
-        if not isinstance(failure["triggers"], list):
-            log_error_and_exit(f"Failure '{fid}' field 'triggers' must be an array.")
-        if not isinstance(failure["remediation"], list):
-            log_error_and_exit(f"Failure '{fid}' field 'remediation' must be an array.")
-        if not isinstance(failure["labels"], list):
-            log_error_and_exit(f"Failure '{fid}' field 'labels' must be an array.")
-        
-        # Verify lists do not contain empty items
-        for t in failure["triggers"]:
-            if not isinstance(t, str) or not t.strip():
-                log_error_and_exit(f"Failure '{fid}' has an empty/invalid trigger.")
-        for r in failure["remediation"]:
-            if not isinstance(r, str) or not r.strip():
-                log_error_and_exit(f"Failure '{fid}' has an empty/invalid remediation.")
-        for l in failure["labels"]:
-            if not isinstance(l, str) or not l.strip():
-                log_error_and_exit(f"Failure '{fid}' has an empty/invalid label.")
+        # List fields checks
+        list_fields = ["triggers", "remediation", "labels"]
+        for field in list_fields:
+            items = failure[field]
+            if not isinstance(items, list):
+                log_error_and_exit(f"Failure '{fid}' field '{field}' must be a list.")
+            for item in items:
+                if not isinstance(item, str) or not item.strip():
+                    log_error_and_exit(f"Failure '{fid}' has an empty or invalid item in '{field}'.")
 
     return failures
 
@@ -151,6 +129,30 @@ known_failure.yaml.
 Do not edit manually."""
     return body.strip()
 
+def fetch_paginated(url, headers, params=None):
+    """
+    Utility helper to perform a GET request and handle GitHub's Link header pagination.
+    """
+    results = []
+    page = 1
+    actual_params = {"per_page": 100}
+    if params:
+        actual_params.update(params)
+    
+    while True:
+        actual_params["page"] = page
+        response = requests.get(url, headers=headers, params=actual_params)
+        if response.status_code != 200:
+            log_error_and_exit(f"GitHub API fetch failed: {response.status_code} - {response.text}")
+        data = response.json()
+        if not data:
+            break
+        results.extend(data)
+        if "rel=\"next\"" not in response.headers.get("Link", ""):
+            break
+        page += 1
+    return results
+
 def main():
     # Allow custom YAML file path via command line argument
     yaml_file = sys.argv[1] if len(sys.argv) > 1 else YAML_FILE
@@ -189,31 +191,11 @@ def main():
 
     # 2. Fetch all repository labels to ensure the required ones exist
     print("Fetching repository labels...")
-    existing_labels = set()
-    page = 1
-    while True:
-        url = f"{api_base}/labels?per_page=100&page={page}"
-        response = requests.get(url, headers=headers)
-        if response.status_code != 200:
-            log_error_and_exit(f"Failed to fetch labels: {response.status_code} - {response.text}")
-        
-        lbl_list = response.json()
-        if not lbl_list:
-            break
-        for l in lbl_list:
-            existing_labels.add(l["name"].lower())
-        
-        if "rel=\"next\"" not in response.headers.get("Link", ""):
-            break
-        page += 1
+    lbl_list = fetch_paginated(f"{api_base}/labels", headers)
+    existing_labels = {l["name"].lower() for l in lbl_list}
 
     # 3. Auto-create any missing labels
-    required_labels = set()
-    for failure in failures:
-        for lbl in failure["labels"]:
-            required_labels.add(lbl)
-
-    # Also make sure standard labels are present just in case
+    required_labels = {lbl for failure in failures for lbl in failure["labels"]}
     required_labels.add("known-failure")
 
     for label in required_labels:
@@ -222,29 +204,14 @@ def main():
             url = f"{api_base}/labels"
             payload = {"name": label, "color": "ededed"}
             res = requests.post(url, headers=headers, json=payload)
-            if res.status_code != 201:
-                print(f"Warning: Could not create label '{label}': {res.status_code} - {res.text}")
-            else:
+            if res.status_code == 201:
                 existing_labels.add(label.lower())
+            else:
+                print(f"Warning: Could not create label '{label}': {res.status_code} - {res.text}")
 
     # 4. Fetch all Issues (open and closed)
     print("Fetching repository issues...")
-    github_issues = []
-    page = 1
-    while True:
-        url = f"{api_base}/issues?state=all&per_page=100&page={page}"
-        response = requests.get(url, headers=headers)
-        if response.status_code != 200:
-            log_error_and_exit(f"Failed to fetch issues: {response.status_code} - {response.text}")
-        
-        iss_list = response.json()
-        if not iss_list:
-            break
-        github_issues.extend(iss_list)
-        
-        if "rel=\"next\"" not in response.headers.get("Link", ""):
-            break
-        page += 1
+    github_issues = fetch_paginated(f"{api_base}/issues", headers, {"state": "all"})
 
     # 5. Extract automation-managed issues using marker
     # Format: { failure_id: issue_object }
