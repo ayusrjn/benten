@@ -42,7 +42,7 @@
   <tr>
     <td align="center" colspan="2">
       <img src="./assets/benten_integrations.png" alt="Voice Service Integrations" style="border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); margin-top: 12px;" /><br />
-      <sub><strong>Integrations Hub (Vapi, Retell, ElevenLabs)</strong></sub>
+      <sub><strong>Integrations Hub (Vapi, Retell, ElevenLabs, Bolna)</strong></sub>
     </td>
   </tr>
 </table>
@@ -68,20 +68,27 @@ Benten integrates directly with leading Voice AI providers. Adding an API key au
 
 <table align="center" style="width: 100%;">
   <tr>
-    <td align="center" width="33%">
+    <td align="center" width="50%">
       <img src="https://img.shields.io/badge/ElevenLabs-7E22CE?style=for-the-badge&logoColor=white" alt="ElevenLabs" style="border-radius: 6px; margin-bottom: 8px;" /><br />
       <strong>ElevenLabs Conversational AI</strong><br />
       <sub>Synchronizes agent profiles via Conversational AI APIs and monitors speech synthesis response times.</sub>
     </td>
-    <td align="center" width="33%">
+    <td align="center" width="50%">
       <img src="https://img.shields.io/badge/Vapi_AI-0369A1?style=for-the-badge&logoColor=white" alt="Vapi AI" style="border-radius: 6px; margin-bottom: 8px;" /><br />
       <strong>Vapi AI</strong><br />
       <sub>Discovers Vapi assistants, ingests end-of-call webhooks, and monitors turn latency and dead air.</sub>
     </td>
-    <td align="center" width="33%">
+  </tr>
+  <tr>
+    <td align="center" width="50%">
       <img src="https://img.shields.io/badge/Retell_AI-047857?style=for-the-badge&logoColor=white" alt="Retell AI" style="border-radius: 6px; margin-bottom: 8px;" /><br />
       <strong>Retell AI</strong><br />
       <sub>Fetches agent profiles and call records, monitoring speech turn overlaps and silence ratios.</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://img.shields.io/badge/Bolna_AI-0EA5E9?style=for-the-badge&logoColor=white" alt="Bolna AI" style="border-radius: 6px; margin-bottom: 8px;" /><br />
+      <strong>Bolna AI</strong><br />
+      <sub>Fetches agent profiles and execution call logs, parsing structured conversational turns and audio recordings.</sub>
     </td>
   </tr>
 </table>
@@ -90,7 +97,7 @@ Benten integrates directly with leading Voice AI providers. Adding an API key au
 
 ## Key Features
 
-- **Automated Agent Discovery**: Enter API keys in the dashboard to automatically sync agents across ElevenLabs, Vapi, and Retell.
+- **Automated Agent Discovery**: Enter API keys in the dashboard to automatically sync agents across ElevenLabs, Vapi, Retell, and Bolna.
 - **Audio Analysis Pipeline**: Standardizes audio files, detects speech activity with **Silero VAD**, separates speaker turns with **PyAnnote diarization**, scores speech quality using PyTorch **NISQA**, and measures latency, dead air, and interruptions.
 - **High-Density Conversations Table**: View all ingested calls with KPI metrics summary bar, consolidated metadata columns, color-coded NISQA MOS tags, and quick re-evaluation controls.
 - **3-Pane Call Detail Drawer**: Inspect overall health, turn-by-turn searchable transcripts with seeking audio playback, and technical JSON metadata payloads.
