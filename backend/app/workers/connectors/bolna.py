@@ -48,7 +48,6 @@ class BolnaConnector(BaseConnector):
         agent_id = data.get("agent_id")
         agent_name = data.get("agent_name") or (f"Bolna Agent ({agent_id})" if agent_id else "Bolna Agent")
         
-        # Parse timestamps and cost
         started_at = None
         created_at_val = data.get("created_at") or data.get("started_at")
         if created_at_val:
@@ -73,7 +72,6 @@ class BolnaConnector(BaseConnector):
         transcript = data.get("transcript") or ""
         turns = []
         
-        # Try structured turns first (e.g. key: "turns", "transcript_object", "messages")
         raw_turns = data.get("turns") or data.get("transcript_object") or data.get("messages")
         if raw_turns and isinstance(raw_turns, list):
             for turn in raw_turns:
@@ -93,7 +91,6 @@ class BolnaConnector(BaseConnector):
                     "text": text
                 })
         
-        # Parse plain-text transcript prefix pattern fallback if structured turns are absent
         if not turns and transcript:
             lines = transcript.split('\n')
             current_time = 0.0
@@ -105,7 +102,6 @@ class BolnaConnector(BaseConnector):
                 speaker = "agent"
                 text = line
                 
-                # Check for "Speaker: text" structure
                 if ":" in line:
                     prefix, payload = line.split(":", 1)
                     prefix_clean = prefix.strip().lower()
@@ -116,7 +112,6 @@ class BolnaConnector(BaseConnector):
                         speaker = "user"
                         text = payload.strip()
                     else:
-                        # Unrecognized prefix, treat search for user/agent inside prefix or default
                         if "user" in prefix_clean or "customer" in prefix_clean:
                             speaker = "user"
                         text = payload.strip()
@@ -138,7 +133,6 @@ class BolnaConnector(BaseConnector):
                 if duration_sec > 0 and current_time >= duration_sec:
                     break
         
-        # Fallback duration calculation
         if not duration_sec and turns:
             duration_sec = int(turns[-1]["end_sec"])
             
