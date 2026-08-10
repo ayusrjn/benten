@@ -60,6 +60,7 @@ const PROVIDER_COLORS: Record<string, { bg: string; text: string; border: string
   elevenlabs: { bg: "#f3e8ff", text: "#7e22ce", border: "#d8b4fe" },
   vapi: { bg: "#e0f2fe", text: "#0369a1", border: "#bae6fd" },
   retell: { bg: "#ecfdf5", text: "#047857", border: "#a7f3d0" },
+  bolna: { bg: "#e0f2fe", text: "#0284c7", border: "#bae6fd" },
   default: { bg: "#f3f4f6", text: "#374151", border: "#e5e7eb" },
 };
 
@@ -415,6 +416,10 @@ export const AgentsPage: React.FC = () => {
                   {
                     label: `Retell (${agents.filter((a) => a.provider.toLowerCase() === "retell").length})`,
                     value: "retell",
+                  },
+                  {
+                    label: `Bolna (${agents.filter((a) => a.provider.toLowerCase() === "bolna").length})`,
+                    value: "bolna",
                   },
                 ]}
                 value={selectedProvider}

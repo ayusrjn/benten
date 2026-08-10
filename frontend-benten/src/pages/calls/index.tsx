@@ -39,7 +39,8 @@ const { Option } = Select;
 const PROVIDER_COLORS: Record<string, string> = {
   vapi: "#8b5cf6",
   retell: "#10b981",
-  elevenlabs: "#f59e0b"
+  elevenlabs: "#f59e0b",
+  bolna: "#0ea5e9"
 };
 
 export const CallsPage: React.FC = () => {
@@ -153,7 +154,7 @@ export const CallsPage: React.FC = () => {
     setSyncing(true);
     try {
       const tokenVal = localStorage.getItem(TOKEN_KEY);
-      const providers = ["vapi", "retell", "elevenlabs"];
+      const providers = ["vapi", "retell", "elevenlabs", "bolna"];
       let totalImported = 0;
 
       for (const prov of providers) {
@@ -527,6 +528,7 @@ export const CallsPage: React.FC = () => {
               <Option value="vapi">Vapi</Option>
               <Option value="retell">Retell</Option>
               <Option value="elevenlabs">ElevenLabs</Option>
+              <Option value="bolna">Bolna</Option>
             </Select>
 
             <Select value={agentFilter} onChange={setAgentFilter} style={{ width: 140, borderRadius: 8 }}>

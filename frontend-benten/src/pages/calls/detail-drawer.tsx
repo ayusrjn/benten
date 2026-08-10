@@ -113,7 +113,8 @@ interface CallDetailDrawerProps {
 const PROVIDER_COLORS: Record<string, string> = {
   vapi: "#8b5cf6",
   retell: "#10b981",
-  elevenlabs: "#f59e0b"
+  elevenlabs: "#f59e0b",
+  bolna: "#0ea5e9"
 };
 
 export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({

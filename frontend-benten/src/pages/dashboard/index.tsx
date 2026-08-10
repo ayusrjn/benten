@@ -656,6 +656,21 @@ export const Dashboard: React.FC = () => {
                   );
                 })()}
 
+                {(() => {
+                  const status = getIntegrationStatus("bolna");
+                  return (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <Text strong style={{ fontSize: 13, color: "#0ea5e9" }}>Bolna AI</Text>
+                        <Text type={status.connected ? "secondary" : "danger"} style={{ fontSize: 12 }}>
+                          {status.statusText}
+                        </Text>
+                      </div>
+                      <Progress percent={status.percent} strokeColor={status.connected ? "#0ea5e9" : "#d9d9d9"} size="small" />
+                    </div>
+                  );
+                })()}
+
                 <Button
                   type="dashed"
                   block

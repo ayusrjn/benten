@@ -7,7 +7,8 @@ from app.models.integration import Integration
 PROVIDER_KEY_TO_NAME = {
     "elevenlabs": "ElevenLabs",
     "vapi": "Vapi",
-    "retell": "Retell"
+    "retell": "Retell",
+    "bolna": "Bolna"
 }
 
 PROVIDER_NAME_TO_KEY = {v: k for k, v in PROVIDER_KEY_TO_NAME.items()}

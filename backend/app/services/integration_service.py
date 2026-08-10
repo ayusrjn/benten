@@ -29,6 +29,11 @@ PROVIDER_CONFS = {
         "url": "https://api.elevenlabs.io/v1/convai/agents",
         "method": "GET",
         "headers": lambda key: {"xi-api-key": key}
+    },
+    "bolna": {
+        "url": "https://api.bolna.ai/v2/agent/all",
+        "method": "GET",
+        "headers": lambda key: {"Authorization": f"Bearer {key}"}
     }
 }
 

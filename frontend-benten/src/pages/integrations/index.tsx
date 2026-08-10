@@ -80,6 +80,18 @@ const PROVIDER_INFO: Record<string, { desc: string; color: string; webhookDesc: 
       "Paste your ElevenLabs API key below and save settings.",
       "Click 'Sync Calls' to download agent audio recordings."
     ]
+  },
+  bolna: {
+    desc: "Seamlessly ingest call logs, recordings, transcripts, and agent statuses from your Bolna voice applications for deep audio quality scoring.",
+    color: "#0ea5e9",
+    webhookDesc: "Configure this webhook URL inside your Bolna platform dashboard.",
+    setupSteps: [
+      "Navigate to the Bolna Platform Dashboard (platform.bolna.ai).",
+      "Copy your Bolna API Key from the Developer API section.",
+      "Paste the API key below and save settings.",
+      "Sync agents to retrieve configured Voice AI agent IDs.",
+      "Trigger manual 'Sync Calls' to download recent call recordings."
+    ]
   }
 };
 
