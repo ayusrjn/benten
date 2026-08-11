@@ -27,7 +27,7 @@ import routerProvider, {
 import { dataProvider } from "./providers/data";
 import { ColorModeContextProvider } from "./contexts/color-mode";
 import { Header } from "./components/header";
-import { Logo } from "./components";
+import { Logo, OnboardingGuard } from "./components";
 import { Login } from "./pages/login";
 import { Register } from "./pages/register";
 import { ForgotPassword } from "./pages/forgotPassword";
@@ -36,6 +36,7 @@ import { IntegrationsPage } from "./pages/integrations";
 import { AgentsPage } from "./pages/agents";
 import { CallsPage } from "./pages/calls";
 import { authProvider } from "./providers/auth";
+import { OnboardingPage } from "./pages/onboarding";
 
 import {
   DashboardOutlined,
@@ -117,6 +118,12 @@ function App() {
                         key="authenticated-inner"
                         fallback={<CatchAllNavigate to="/login" />}
                       >
+                        <OnboardingGuard />
+                      </Authenticated>
+                    }
+                  >
+                    <Route
+                      element={
                         <ThemedLayout
                           Header={Header}
                           Sider={(props) => (
@@ -130,21 +137,22 @@ function App() {
                         >
                           <Outlet />
                         </ThemedLayout>
-                      </Authenticated>
-                    }
-                  >
-                    <Route
-                      index
-                      element={<NavigateToResource resource="dashboard" />}
-                    />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/calls" element={<CallsPage />} />
-                    <Route path="/calls/:id" element={<CallsPage />} />
-                    <Route path="/conversations" element={<CallsPage />} />
-                    <Route path="/conversations/:id" element={<CallsPage />} />
-                    <Route path="/agents" element={<AgentsPage />} />
-                    <Route path="/alerts" element={<div style={{ padding: "24px" }}>Alerts Placeholder</div>} />
-                    <Route path="/integrations" element={<IntegrationsPage />} />
+                      }
+                    >
+                      <Route
+                        index
+                        element={<NavigateToResource resource="dashboard" />}
+                      />
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/calls" element={<CallsPage />} />
+                      <Route path="/calls/:id" element={<CallsPage />} />
+                      <Route path="/conversations" element={<CallsPage />} />
+                      <Route path="/conversations/:id" element={<CallsPage />} />
+                      <Route path="/agents" element={<AgentsPage />} />
+                      <Route path="/alerts" element={<div style={{ padding: "24px" }}>Alerts Placeholder</div>} />
+                      <Route path="/integrations" element={<IntegrationsPage />} />
+                    </Route>
+                    <Route path="/onboarding" element={<OnboardingPage />} />
                   </Route>
                   <Route
                     element={

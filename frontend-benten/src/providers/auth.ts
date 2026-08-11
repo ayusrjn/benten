@@ -56,14 +56,14 @@ export const authProvider: AuthProvider = {
       };
     }
   },
-  register: async ({ email, password, fullName }) => {
+  register: async ({ email, password, fullName, orgName }) => {
     try {
-      if (!email || !password) {
+      if (!email || !password || !orgName) {
         return {
           success: false,
           error: {
             name: "RegisterError",
-            message: "Email and password are required.",
+            message: "Email, password, and Organization Name are required.",
           },
         };
       }
@@ -77,6 +77,7 @@ export const authProvider: AuthProvider = {
           email,
           password,
           full_name: fullName || null,
+          org_name: orgName,
         }),
       });
 
@@ -149,6 +150,7 @@ export const authProvider: AuthProvider = {
         id: data.id,
         name: data.full_name || data.email,
         email: data.email,
+        onboardingCompleted: data.onboarding_completed,
         avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(data.email)}`,
       };
     } catch (error) {

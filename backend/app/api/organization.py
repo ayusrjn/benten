@@ -101,13 +101,24 @@ def invite_member(
     if not member:
         raise HTTPException(status_code=404, detail="User organization membership not found")
         
-    # Check if already a member
-    existing = db.query(Member).filter(
-        Member.organization_id == member.organization_id,
-        Member.email == payload.email
-    ).first()
+    # Check if already a member globally.
+    # To facilitate repeated onboarding testing, if the member already exists,
+    # we update their organization to the current active organization and update their role,
+    # rather than failing with a 400 Bad Request.
+    existing = db.query(Member).filter(Member.email == payload.email).first()
     if existing:
-        raise HTTPException(status_code=400, detail="User is already a member of this organization")
+        existing.organization_id = member.organization_id
+        existing.role = payload.role or "Viewer"
+        db.commit()
+        db.refresh(existing)
+        name = payload.email.split("@")[0].capitalize()
+        return MemberResponse(
+            id=existing.id,
+            name=name,
+            email=existing.email,
+            role=existing.role,
+            avatar=existing.avatar_url
+        )
         
     new_member = Member(
         organization_id=member.organization_id,

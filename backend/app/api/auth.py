@@ -4,6 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
+from app.models.organization import Organization, Member
 from app.api.security import verify_password, get_password_hash, create_access_token, get_current_active_user
 from app.config import settings
 from app.schemas import UserCreate
@@ -17,12 +18,29 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email already registered")
     
     hashed_password = get_password_hash(user.password)
+    
+    # 1. Create User
     new_user = User(
         email=user.email,
         hashed_password=hashed_password,
-        full_name=user.full_name
+        full_name=user.full_name,
+        onboarding_completed=False
     )
     db.add(new_user)
+    db.flush()  # Generate user.id
+    
+    # 2. Create Organization
+    org = Organization(name=user.org_name)
+    db.add(org)
+    db.flush()  # Generate org.id
+    
+    # 3. Create Member mapping
+    member = Member(
+        organization_id=org.id,
+        email=user.email,
+        role="Owner"
+    )
+    db.add(member)
     db.commit()
     db.refresh(new_user)
     
@@ -50,5 +68,15 @@ def read_users_me(current_user: User = Depends(get_current_active_user)):
         "id": str(current_user.id),
         "email": current_user.email,
         "full_name": current_user.full_name,
-        "is_active": current_user.is_active
+        "is_active": current_user.is_active,
+        "onboarding_completed": current_user.onboarding_completed
     }
+
+@router.post("/onboarding/complete")
+def complete_onboarding(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    current_user.onboarding_completed = True
+    db.commit()
+    return {"message": "Onboarding completed successfully"}
