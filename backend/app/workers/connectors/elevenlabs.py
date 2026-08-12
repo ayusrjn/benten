@@ -28,6 +28,103 @@ class ElevenLabsConnector(BaseConnector):
         except Exception as e:
             return False, f"Failed to connect to ElevenLabs: {str(e)}"
 
+    def _extract_tool_calls(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        tool_calls_map = {}
+        raw_turns = data.get("transcript") or data.get("messages") or data.get("turns") or []
+        if isinstance(raw_turns, list):
+            for turn in raw_turns:
+                if not isinstance(turn, dict):
+                    continue
+                t_calls = turn.get("tool_calls") or []
+                if isinstance(t_calls, list):
+                    for tc in t_calls:
+                        if not isinstance(tc, dict):
+                            continue
+                        tc_id = tc.get("id") or tc.get("call_id") or tc.get("request_id")
+                        name = tc.get("name") or tc.get("function_name")
+                        args = tc.get("arguments") or tc.get("payload")
+                        
+                        tool_calls_map[tc_id] = {
+                            "id": tc_id,
+                            "name": name,
+                            "arguments": args,
+                            "start_time_sec": turn.get("time_in_call_secs") or turn.get("start_time_sec") or 0.0,
+                            "latency_ms": None,
+                            "result": None,
+                            "error": None
+                        }
+                        
+                t_results = turn.get("tool_results") or []
+                if isinstance(t_results, list):
+                    for tr in t_results:
+                        if not isinstance(tr, dict):
+                            continue
+                        tc_id = tr.get("id") or tr.get("call_id") or tr.get("request_id") or tr.get("tool_call_id")
+                        res = tr.get("result") or tr.get("output") or tr.get("content")
+                        err = tr.get("error")
+                        latency = tr.get("latency_ms") or tr.get("duration_ms")
+                        
+                        if tc_id in tool_calls_map:
+                            entry = tool_calls_map[tc_id]
+                            entry["result"] = res
+                            entry["error"] = err
+                            if latency is not None:
+                                entry["latency_ms"] = int(latency)
+                            else:
+                                end_time = turn.get("time_in_call_secs") or turn.get("start_time_sec")
+                                if entry["start_time_sec"] is not None and end_time is not None:
+                                    entry["latency_ms"] = int((end_time - entry["start_time_sec"]) * 1000)
+                        else:
+                            tool_calls_map[tc_id] = {
+                                "id": tc_id,
+                                "name": tr.get("name"),
+                                "arguments": None,
+                                "start_time_sec": None,
+                                "latency_ms": int(latency) if latency else None,
+                                "result": res,
+                                "error": err
+                            }
+                            
+                if turn.get("tool_call"):
+                    tc = turn["tool_call"]
+                    if isinstance(tc, dict):
+                        tc_id = tc.get("id") or tc.get("call_id") or f"tc_{len(tool_calls_map)}"
+                        tool_calls_map[tc_id] = {
+                            "id": tc_id,
+                            "name": tc.get("name") or tc.get("function_name"),
+                            "arguments": tc.get("arguments") or tc.get("payload"),
+                            "start_time_sec": turn.get("time_in_call_secs") or turn.get("start_time_sec") or 0.0,
+                            "latency_ms": None,
+                            "result": None,
+                            "error": None
+                        }
+                        
+                if turn.get("tool_result"):
+                    tr = turn["tool_result"]
+                    if isinstance(tr, dict):
+                        tc_id = tr.get("id") or tr.get("call_id") or tr.get("tool_call_id") or f"tc_{len(tool_calls_map)}"
+                        latency = tr.get("latency_ms") or tr.get("duration_ms")
+                        if tc_id in tool_calls_map:
+                            entry = tool_calls_map[tc_id]
+                            entry["result"] = tr.get("result") or tr.get("output") or tr.get("content")
+                            entry["error"] = tr.get("error")
+                            if latency is not None:
+                                entry["latency_ms"] = int(latency)
+                        else:
+                            tool_calls_map[tc_id] = {
+                                "id": tc_id,
+                                "name": tr.get("name"),
+                                "arguments": None,
+                                "start_time_sec": None,
+                                "latency_ms": int(latency) if latency else None,
+                                "result": tr.get("result") or tr.get("output") or tr.get("content"),
+                                "error": tr.get("error")
+                            }
+                            
+        result_list = list(tool_calls_map.values())
+        result_list.sort(key=lambda x: x["start_time_sec"] or 0.0)
+        return result_list
+
     def get_call(self, call_id: str) -> Dict[str, Any]:
         if self.api_key == "mock" or call_id.startswith("mock_"):
             return self._get_mock_data(call_id)
@@ -55,7 +152,8 @@ class ElevenLabsConnector(BaseConnector):
         if started_at and duration_sec:
             ended_at = datetime.fromtimestamp(start_secs + duration_sec, tz=timezone.utc)
             
-        cost = data.get("cost") or (call_metadata.get("cost") if call_metadata else None)
+        raw_cost = data.get("cost") or (call_metadata.get("cost") if call_metadata else None)
+        cost = float(raw_cost) * 0.00015 if raw_cost is not None else None
         
         # Extract turns (ElevenLabs can return turns under 'transcript', 'messages', 'turns', or 'analysis.transcript')
         turns = []
@@ -118,6 +216,8 @@ class ElevenLabsConnector(BaseConnector):
             logger.warning(f"Failed to download audio for ElevenLabs call {call_id}: {e}")
             audio_local_path = None
 
+        tool_calls = self._extract_tool_calls(data)
+
         return {
             "external_id": call_id,
             "agent_id": agent_id,
@@ -129,6 +229,7 @@ class ElevenLabsConnector(BaseConnector):
             "cost": cost,
             "transcript": transcript,
             "turns": turns,
+            "tool_calls": tool_calls,
             "metadata": data
         }
 
@@ -229,7 +330,7 @@ class ElevenLabsConnector(BaseConnector):
                         "ended_at": conv_ended_at,
                         "duration_sec": duration,
                         "status": conv.get("status", "completed"),
-                        "cost": conv.get("cost"),
+                        "cost": float(conv.get("cost")) * 0.00015 if conv.get("cost") is not None else None,
                         "raw_metadata": conv
                     })
 
@@ -272,6 +373,45 @@ class ElevenLabsConnector(BaseConnector):
 
     def _get_mock_data(self, call_id: str) -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
+        mock_raw_turns = [
+            {
+                "role": "agent",
+                "message": "Welcome to ElevenLabs Voice Agent. How can I help you today?",
+                "time_in_call_secs": 0.0,
+                "end_time_sec": 3.5
+            },
+            {
+                "role": "user",
+                "message": "Hi, I am testing the ElevenLabs audio ingestion task. Does it download the audio file correctly?",
+                "time_in_call_secs": 4.5,
+                "end_time_sec": 9.2
+            },
+            {
+                "role": "agent",
+                "message": "Yes, it downloads the raw audio via the conversation audio API endpoint, saves it locally, and exposes it over the static path.",
+                "time_in_call_secs": 10.0,
+                "end_time_sec": 15.4
+            },
+            {
+                "tool_call": {
+                    "id": "el_call_mock_1",
+                    "name": "lookup_playback_status",
+                    "arguments": {"player_state": "active"}
+                },
+                "time_in_call_secs": 16.5
+            },
+            {
+                "tool_result": {
+                    "id": "el_call_mock_1",
+                    "name": "lookup_playback_status",
+                    "result": {"status": "synced", "volume": 80},
+                    "latency_ms": 1120
+                },
+                "time_in_call_secs": 18.0
+            }
+        ]
+        tool_calls = self._extract_tool_calls({"transcript": mock_raw_turns})
+        
         return {
             "external_id": call_id,
             "agent_id": "agent_el_01",
@@ -302,10 +442,12 @@ class ElevenLabsConnector(BaseConnector):
                     "text": "Yes, it downloads the raw audio via the conversation audio API endpoint, saves it locally, and exposes it over the static path."
                 }
             ],
+            "tool_calls": tool_calls,
             "metadata": {
                 "conversation_id": call_id,
                 "status": "completed",
-                "mocked": True
+                "mocked": True,
+                "transcript": mock_raw_turns
             }
         }
 

@@ -12,6 +12,8 @@ class BolnaConnector(BaseConnector):
     Retrieves agents, executions (calls), transcripts, recordings, and speaker turns.
     """
     def verify_key(self) -> tuple[bool, str]:
+        if self.api_key == "mock" or self.api_key.startswith("mock_"):
+            return True, "Mock Bolna API key valid"
         try:
             url = "https://api.bolna.ai/v2/agent/all"
             headers = {"Authorization": f"Bearer {self.api_key}"}
@@ -24,7 +26,133 @@ class BolnaConnector(BaseConnector):
         except Exception as e:
             return False, f"Failed to connect to Bolna: {str(e)}"
 
+    def _extract_tool_calls(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        tool_calls = []
+        steps = data.get("steps") or data.get("history") or []
+        if isinstance(steps, list):
+            for step in steps:
+                if not isinstance(step, dict):
+                    continue
+                step_type = step.get("type") or step.get("step_type")
+                if step_type in ("webhook", "api_call", "tool"):
+                    latency = step.get("latency_ms") or step.get("durations_ms") or step.get("duration")
+                    if latency is not None:
+                        latency_ms = int(latency * 1000) if latency < 100 else int(latency)
+                    else:
+                        latency_ms = None
+                        
+                    tool_calls.append({
+                        "id": step.get("id") or step.get("execution_id") or f"step_{len(tool_calls)}",
+                        "name": step.get("name") or step.get("tool_name") or f"Webhook: {step.get('url')}",
+                        "arguments": step.get("arguments") or step.get("payload") or step.get("input"),
+                        "start_time_sec": step.get("start_time_sec") or step.get("timestamp"),
+                        "latency_ms": latency_ms,
+                        "result": step.get("result") or step.get("response") or step.get("output"),
+                        "error": step.get("error")
+                    })
+                    
+        latency_data = data.get("latency_data") or {}
+        if isinstance(latency_data, dict):
+            for k, v in latency_data.items():
+                if ("tool" in k or "webhook" in k or "api" in k) and isinstance(v, (int, float)):
+                    exists = any(tc["name"] == k for tc in tool_calls)
+                    if not exists:
+                        tool_calls.append({
+                            "id": f"lat_{len(tool_calls)}",
+                            "name": k,
+                            "arguments": None,
+                            "start_time_sec": None,
+                            "latency_ms": int(v) if v > 10 else int(v * 1000),
+                            "result": None,
+                            "error": None
+                        })
+        return tool_calls
+
+    def _get_mock_data(self, call_id: str) -> Dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        mock_data = {
+            "execution_id": call_id,
+            "agent_id": "agent_bolna_01",
+            "agent_name": "Mock Bolna Agent",
+            "recording_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+            "duration": 50,
+            "created_at": now.isoformat(),
+            "cost": 0.0600,
+            "transcript": "Agent: Welcome to Bolna. Billing department.\nUser: Yes, is my invoice paid?",
+            "turns": [
+                {
+                    "speaker": "agent",
+                    "text": "Welcome to Bolna. Billing department. How can I help you?",
+                    "start_sec": 0.8,
+                    "end_sec": 4.5
+                },
+                {
+                    "speaker": "user",
+                    "text": "Yes, is my invoice paid?",
+                    "start_sec": 5.2,
+                    "end_sec": 8.0
+                }
+            ],
+            "steps": [
+                {
+                    "type": "tool",
+                    "name": "check_invoice_status",
+                    "arguments": {"invoice_id": "INV-2026-99"},
+                    "start_time_sec": 9.5,
+                    "latency_ms": 1780,
+                    "result": {"status": "paid", "amount": "$450.00", "date": "2026-08-01"},
+                    "error": None
+                }
+            ]
+        }
+        tool_calls = self._extract_tool_calls(mock_data)
+        return {
+            "external_id": call_id,
+            "agent_id": "agent_bolna_01",
+            "agent_name": "Mock Bolna Agent",
+            "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+            "duration_sec": 50,
+            "started_at": now,
+            "ended_at": datetime.fromtimestamp(now.timestamp() + 50, tz=timezone.utc),
+            "cost": 0.0600,
+            "transcript": mock_data["transcript"],
+            "turns": [
+                {
+                    "speaker": "agent",
+                    "start_sec": 0.8,
+                    "end_sec": 4.5,
+                    "text": "Welcome to Bolna. Billing department. How can I help you?"
+                },
+                {
+                    "speaker": "user",
+                    "start_sec": 5.2,
+                    "end_sec": 8.0,
+                    "text": "Yes, is my invoice paid?"
+                }
+            ],
+            "tool_calls": tool_calls,
+            "metadata": mock_data
+        }
+
+    def _get_mock_calls_list(self, agent_id: Optional[str], created_after: Optional[datetime]) -> List[Dict[str, Any]]:
+        now = datetime.now(timezone.utc)
+        return [
+            {
+                "external_id": "mock_bolna_call_001",
+                "agent_id": agent_id or "agent_bolna_01",
+                "started_at": now,
+                "ended_at": datetime.fromtimestamp(now.timestamp() + 50, tz=timezone.utc),
+                "duration_sec": 50,
+                "status": "completed",
+                "cost": 0.0600,
+                "raw_metadata": {"mocked": True, "execution_id": "mock_bolna_call_001"}
+            }
+        ]
+
     def get_call(self, call_id: str) -> Dict[str, Any]:
+        if self.api_key == "mock" or call_id.startswith("mock_") or call_id.startswith("mock-"):
+            return self._get_mock_data(call_id)
+
         url = f"https://api.bolna.ai/executions/{call_id}"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         
@@ -136,6 +264,8 @@ class BolnaConnector(BaseConnector):
         if not duration_sec and turns:
             duration_sec = int(turns[-1]["end_sec"])
             
+        tool_calls = self._extract_tool_calls(data)
+            
         return {
             "external_id": call_id,
             "agent_id": agent_id,
@@ -147,6 +277,7 @@ class BolnaConnector(BaseConnector):
             "cost": cost,
             "transcript": transcript,
             "turns": turns,
+            "tool_calls": tool_calls,
             "metadata": data
         }
 
@@ -164,6 +295,9 @@ class BolnaConnector(BaseConnector):
         If agent_id is provided, fetches executions for that agent.
         Otherwise lists all agents first and aggregates executions.
         """
+        if self.api_key == "mock" or self.api_key.startswith("mock_"):
+            return self._get_mock_calls_list(agent_id, created_after)
+
         calls_list = []
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
@@ -257,6 +391,17 @@ class BolnaConnector(BaseConnector):
         return calls_list[:limit]
 
     def list_agents(self) -> List[Dict[str, Any]]:
+        if self.api_key == "mock" or self.api_key.startswith("mock_"):
+            return [
+                {
+                    "external_id": "agent_bolna_01",
+                    "name": "Bolna Customer Support Assistant",
+                    "description": "Status: active",
+                    "created_at": "2026-02-10T08:00:00Z",
+                    "raw_metadata": {"id": "agent_bolna_01", "name": "Bolna Customer Support Assistant"}
+                }
+            ]
+
         agents_list = []
         url = "https://api.bolna.ai/v2/agent/all"
         headers = {"Authorization": f"Bearer {self.api_key}"}

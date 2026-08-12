@@ -84,10 +84,12 @@ def process_call_ingestion(db: Session, project_id: str, provider: str, provider
         speech_rate_wpm=0,
         voice_quality=100,
         audio_url=audio_url,
+        cost=call_data.get("cost"),
         raw_metrics_json={
             "provider_call_id": provider_call_id,
             "provider": provider_key,
-            "provider_metadata": call_data.get("metadata", {})
+            "provider_metadata": call_data.get("metadata", {}),
+            "tool_calls": call_data.get("tool_calls", [])
         }
     )
     db.add(conversation)
@@ -204,7 +206,8 @@ def sync_calls_for_integration(db: Session, project_id: str, provider: str) -> d
             raw_metrics_json={
                 "provider_call_id": ext_call_id,
                 "provider": provider_key,
-                "provider_metadata": call_details.get("metadata", call_summary.get("raw_metadata", {}))
+                "provider_metadata": call_details.get("metadata", call_summary.get("raw_metadata", {})),
+                "tool_calls": call_details.get("tool_calls", [])
             }
         )
         db.add(conversation)

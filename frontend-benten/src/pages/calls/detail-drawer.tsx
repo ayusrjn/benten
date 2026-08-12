@@ -10,6 +10,7 @@ import {
   Col,
   Card,
   Progress,
+  Timeline,
   Badge,
   Input,
   Tooltip,
@@ -133,6 +134,55 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   if (!call && !loading) return null;
+
+  // Extract and calculate tool call metrics
+  const toolCalls = call?.rawMetrics?.tool_calls || [];
+  const validLatencies = toolCalls
+    .map((tc: any) => tc.latency_ms)
+    .filter((lat: any) => lat !== null && lat !== undefined);
+
+  const totalToolCalls = toolCalls.length;
+  const avgLatency = validLatencies.length > 0
+    ? Math.round(validLatencies.reduce((sum: number, lat: number) => sum + lat, 0) / validLatencies.length)
+    : null;
+
+  const slowestTool = toolCalls.reduce((slowest: any, current: any) => {
+    if (current.latency_ms === null || current.latency_ms === undefined) return slowest;
+    if (!slowest || current.latency_ms > slowest.latency_ms) return current;
+    return slowest;
+  }, null);
+
+  const isValidJson = (str: any) => {
+    if (typeof str !== "string") return false;
+    try {
+      JSON.parse(str);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const formatCost = (val: number | null | undefined): string => {
+    if (val === null || val === undefined) return "—";
+    if (val === 0) return "$0.00";
+    if (val < 0.01) {
+      // Sub-penny costs: show up to 4 decimals, prune trailing zeros (e.g. $0.0045)
+      return `$${parseFloat(val.toFixed(4))}`;
+    }
+    // Standard cents or higher: show up to 3 decimals, prune trailing zeros
+    // This formats 0.0450 to $0.045 and 1.2500 to $1.25 nicely
+    const formatted = parseFloat(val.toFixed(3));
+    // Ensure at least 2 decimal places are shown for normal values (e.g. $0.1 -> $0.10)
+    const str = formatted.toString();
+    const parts = str.split(".");
+    if (parts.length === 1) {
+      return `$${str}.00`;
+    }
+    if (parts[1].length === 1) {
+      return `$${str}0`;
+    }
+    return `$${str}`;
+  };
 
   const handleReevaluate = async () => {
     if (!call) return;
@@ -305,8 +355,12 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
               items={[
                 { key: "overview", label: <span><InfoCircleOutlined /> Overview & Metrics</span> },
                 { key: "transcript", label: <span><FileTextOutlined /> Audio & Transcript ({call.segments.length})</span> },
+                (call?.rawMetrics?.tool_calls && call.rawMetrics.tool_calls.length > 0) ? {
+                  key: "tool_calls",
+                  label: <span><ApiOutlined /> Tool Calls ({call.rawMetrics.tool_calls.length})</span>
+                } : null,
                 { key: "metadata", label: <span><CodeOutlined /> Technical Metadata</span> }
-              ]}
+              ].filter(Boolean) as any}
             />
           </div>
 
@@ -392,7 +446,7 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
                       <Card size="small" style={{ borderRadius: 10, textAlign: "center" }}>
                         <Text type="secondary" style={{ fontSize: 12 }}>Estimated Cost</Text>
                         <Title level={4} style={{ margin: "4px 0 0" }}>
-                          {call.cost !== null && call.cost !== undefined ? `$${call.cost.toFixed(4)}` : "—"}
+                          {formatCost(call.cost)}
                         </Title>
                       </Card>
                     </Col>
@@ -772,6 +826,173 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
               </Space>
             )}
 
+            {/* TOOL CALLS TAB */}
+            {activeTab === "tool_calls" && (
+              <Space direction="vertical" size="large" style={{ width: "100%" }}>
+                {/* Metrics Summary Cards */}
+                <div>
+                  <Title level={5} style={{ marginBottom: 12 }}>Tool Execution Metrics</Title>
+                  <Row gutter={[12, 12]}>
+                    <Col span={8}>
+                      <Card size="small" style={{ borderRadius: 10, textAlign: "center", padding: "10px 0" }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>Total Tool Calls</Text>
+                        <Title level={3} style={{ margin: "4px 0 0", color: token.colorPrimary }}>
+                          {totalToolCalls}
+                        </Title>
+                      </Card>
+                    </Col>
+                    <Col span={8}>
+                      <Card size="small" style={{ borderRadius: 10, textAlign: "center", padding: "10px 0" }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>Average Latency</Text>
+                        <Title level={3} style={{ margin: "4px 0 0", color: avgLatency && avgLatency > 1500 ? token.colorError : (avgLatency && avgLatency > 750 ? token.colorWarning : token.colorSuccess) }}>
+                          {avgLatency !== null ? `${avgLatency} ms` : "—"}
+                        </Title>
+                      </Card>
+                    </Col>
+                    <Col span={8}>
+                      <Card size="small" style={{ borderRadius: 10, textAlign: "center", padding: "10px 0" }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>Slowest Execution</Text>
+                        <Title level={4} style={{ margin: "6px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={slowestTool ? `${slowestTool.name} (${slowestTool.latency_ms}ms)` : "—"}>
+                          {slowestTool ? slowestTool.name : "—"}
+                        </Title>
+                        {slowestTool && (
+                          <Text type="secondary" style={{ fontSize: 11 }}>
+                            {slowestTool.latency_ms} ms
+                          </Text>
+                        )}
+                      </Card>
+                    </Col>
+                  </Row>
+                </div>
+
+                {/* Interactive Tool Timeline */}
+                <div>
+                  <Title level={5} style={{ marginBottom: 12 }}>Timeline & Latency Profile</Title>
+                  {toolCalls.length > 0 ? (
+                    <Timeline
+                      mode="left"
+                      items={toolCalls.map((tc: any) => {
+                        const hasLatency = tc.latency_ms !== null && tc.latency_ms !== undefined;
+                        let latencyColor = "green";
+                        if (hasLatency) {
+                          if (tc.latency_ms > 1500) latencyColor = "red";
+                          else if (tc.latency_ms > 700) latencyColor = "orange";
+                        }
+                        
+                        const isFailed = tc.error || (tc.result && (
+                          (typeof tc.result === "string" && (tc.result.toLowerCase().includes("error") || tc.result.toLowerCase().includes("failed"))) ||
+                          (typeof tc.result === "object" && (tc.result.error || tc.result.status === "error" || tc.result.status === "failed"))
+                        ));
+
+                        return {
+                          dot: <ApiOutlined style={{ fontSize: "16px", color: isFailed ? token.colorError : token.colorPrimary }} />,
+                          children: (
+                            <Card
+                              size="small"
+                              style={{
+                                borderRadius: 12,
+                                border: isFailed ? `1px solid ${token.colorErrorBorder}` : `1px solid ${token.colorBorderSecondary}`,
+                                background: isFailed ? token.colorErrorBg : token.colorBgContainer,
+                                marginBottom: 12,
+                                boxShadow: "0 1px 2px rgba(0,0,0,0.02)"
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <Text strong style={{ fontSize: 14 }}>{tc.name}</Text>
+                                  {isFailed && <Tag color="error">Failed</Tag>}
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  {tc.start_time_sec !== null && tc.start_time_sec !== undefined && (
+                                    <Tooltip title={call.audioUrl ? "Click to jump to this timestamp in audio" : "Start time in call"}>
+                                      <Tag 
+                                        color="blue" 
+                                        style={{ 
+                                          cursor: call.audioUrl ? "pointer" : "default", 
+                                          fontWeight: 600,
+                                          margin: 0
+                                        }}
+                                        onClick={() => {
+                                          if (call.audioUrl) seekAudio(tc.start_time_sec);
+                                        }}
+                                      >
+                                        <PlayCircleOutlined style={{ marginRight: 4 }} />
+                                        {tc.start_time_sec.toFixed(1)}s
+                                      </Tag>
+                                    </Tooltip>
+                                  )}
+                                  {hasLatency && (
+                                    <Tag color={latencyColor} style={{ fontWeight: 600, margin: 0 }}>
+                                      {tc.latency_ms} ms
+                                    </Tag>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {/* Arguments and Result */}
+                              <div style={{ marginTop: 12 }}>
+                                <Row gutter={[8, 8]}>
+                                  <Col span={12}>
+                                    <Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 4 }}>Arguments</Text>
+                                    <pre style={{
+                                      background: token.colorFillAlter,
+                                      padding: "8px 10px",
+                                      borderRadius: 6,
+                                      fontSize: 11,
+                                      maxHeight: 120,
+                                      overflow: "auto",
+                                      margin: 0,
+                                      border: `1px solid ${token.colorBorderSecondary}`
+                                    }}>
+                                      {tc.arguments ? (
+                                        typeof tc.arguments === "object" 
+                                          ? JSON.stringify(tc.arguments, null, 2) 
+                                          : (isValidJson(tc.arguments) ? JSON.stringify(JSON.parse(tc.arguments), null, 2) : tc.arguments)
+                                      ) : "—"}
+                                    </pre>
+                                  </Col>
+                                  <Col span={12}>
+                                    <Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 4 }}>Result / Error</Text>
+                                    <pre style={{
+                                      background: isFailed ? token.colorErrorBgActive : token.colorFillAlter,
+                                      padding: "8px 10px",
+                                      borderRadius: 6,
+                                      fontSize: 11,
+                                      maxHeight: 120,
+                                      overflow: "auto",
+                                      margin: 0,
+                                      border: isFailed ? `1px solid ${token.colorErrorBorder}` : `1px solid ${token.colorBorderSecondary}`,
+                                      color: isFailed ? token.colorError : token.colorText
+                                    }}>
+                                      {tc.error ? tc.error : (
+                                        tc.result ? (
+                                          typeof tc.result === "object" 
+                                            ? JSON.stringify(tc.result, null, 2) 
+                                            : (isValidJson(tc.result) ? JSON.stringify(JSON.parse(tc.result), null, 2) : tc.result)
+                                        ) : "—"
+                                      )}
+                                    </pre>
+                                  </Col>
+                                </Row>
+                              </div>
+                            </Card>
+                          )
+                        };
+                      })}
+                    />
+                  ) : (
+                    <Alert
+                      message="No Tool Calls"
+                      description="No tool invocations recorded for this conversation execution."
+                      type="info"
+                      showIcon
+                      style={{ borderRadius: 8 }}
+                    />
+                  )}
+                </div>
+              </Space>
+            )}
+
             {/* TECHNICAL METADATA TAB */}
             {activeTab === "metadata" && (
               <Space direction="vertical" size="large" style={{ width: "100%" }}>
@@ -799,7 +1020,7 @@ export const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <Text type="secondary">Cost:</Text>
-                      <Text>{call.cost !== null && call.cost !== undefined ? `$${call.cost.toFixed(4)}` : "Not provided"}</Text>
+                      <Text>{formatCost(call.cost)}</Text>
                     </div>
                   </Space>
                 </Card>

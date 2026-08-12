@@ -26,6 +26,71 @@ class VapiConnector(BaseConnector):
         except Exception as e:
             return False, f"Failed to connect to Vapi: {str(e)}"
 
+    def _extract_tool_calls(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        tool_calls_map = {}
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            role = msg.get("role")
+            msg_time = msg.get("time") or msg.get("timestamp")
+            if msg_time is None and msg.get("secondsFromStart") is not None:
+                msg_time = float(msg["secondsFromStart"]) * 1000.0
+
+            if role == "tool-call":
+                t_calls = msg.get("toolCalls") or []
+                for tc in t_calls:
+                    if not isinstance(tc, dict):
+                        continue
+                    tc_id = tc.get("id")
+                    func_data = tc.get("function") or {}
+                    name = func_data.get("name")
+                    arguments = func_data.get("arguments")
+                    
+                    tool_calls_map[tc_id] = {
+                        "id": tc_id,
+                        "name": name,
+                        "arguments": arguments,
+                        "start_time": msg_time,
+                        "start_time_sec": msg.get("secondsFromStart"),
+                        "end_time": None,
+                        "latency_ms": None,
+                        "result": None,
+                        "error": None
+                    }
+
+            elif role == "tool-call-result":
+                tc_id = msg.get("toolCallId")
+                result = msg.get("result")
+                error = msg.get("error")
+                name = msg.get("name")
+                
+                if tc_id in tool_calls_map:
+                    entry = tool_calls_map[tc_id]
+                    entry["end_time"] = msg_time
+                    entry["result"] = result
+                    entry["error"] = error
+                    if entry["start_time"] is not None and msg_time is not None:
+                        entry["latency_ms"] = int(msg_time - entry["start_time"])
+                else:
+                    tool_calls_map[tc_id] = {
+                        "id": tc_id,
+                        "name": name,
+                        "arguments": None,
+                        "start_time": None,
+                        "start_time_sec": msg.get("secondsFromStart"),
+                        "end_time": msg_time,
+                        "latency_ms": None,
+                        "result": result,
+                        "error": error
+                    }
+
+        result_list = list(tool_calls_map.values())
+        result_list.sort(key=lambda x: (x["start_time"] or 0.0, x["start_time_sec"] or 0.0))
+        for entry in result_list:
+            entry.pop("start_time", None)
+            entry.pop("end_time", None)
+        return result_list
+
     def get_call(self, call_id: str) -> Dict[str, Any]:
         if self.api_key == "mock" or call_id.startswith("mock_"):
             return self._get_mock_data(call_id)
@@ -100,6 +165,8 @@ class VapiConnector(BaseConnector):
                 "text": text
             })
             
+        tool_calls = self._extract_tool_calls(messages)
+            
         return {
             "external_id": call_id,
             "agent_id": agent_id,
@@ -111,6 +178,7 @@ class VapiConnector(BaseConnector):
             "cost": cost,
             "transcript": transcript,
             "turns": turns,
+            "tool_calls": tool_calls,
             "metadata": data
         }
 
@@ -205,6 +273,42 @@ class VapiConnector(BaseConnector):
 
     def _get_mock_data(self, call_id: str) -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
+        messages = [
+            {
+                "role": "assistant",
+                "message": "Hello, thank you for calling Benten Support. How can I help you today?",
+                "secondsFromStart": 0.5
+            },
+            {
+                "role": "user",
+                "message": "Hi, I am setting up the provider ingestion task.",
+                "secondsFromStart": 5.0
+            },
+            {
+                "role": "tool-call",
+                "toolCalls": [
+                    {
+                        "id": "call_mock_1",
+                        "type": "function",
+                        "function": {
+                            "name": "check_deployment_status",
+                            "arguments": "{\"project_id\": \"benten-prod\"}"
+                        }
+                    }
+                ],
+                "secondsFromStart": 12.0,
+                "time": int(now.timestamp() * 1000) + 12000
+            },
+            {
+                "role": "tool-call-result",
+                "toolCallId": "call_mock_1",
+                "name": "check_deployment_status",
+                "result": "{\"status\": \"healthy\", \"uptime\": \"18d\", \"version\": \"2.4.1\"}",
+                "secondsFromStart": 14.2,
+                "time": int(now.timestamp() * 1000) + 14200
+            }
+        ]
+        tool_calls = self._extract_tool_calls(messages)
         return {
             "external_id": call_id,
             "agent_id": "assistant_vapi_01",
@@ -229,10 +333,12 @@ class VapiConnector(BaseConnector):
                     "text": "Hi, I am setting up the provider ingestion task."
                 }
             ],
+            "tool_calls": tool_calls,
             "metadata": {
                 "id": call_id,
                 "status": "ended",
-                "mocked": True
+                "mocked": True,
+                "messages": messages
             }
         }
 

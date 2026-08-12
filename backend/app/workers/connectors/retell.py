@@ -29,6 +29,73 @@ class RetellConnector(BaseConnector):
         except Exception as e:
             return False, f"Failed to connect to Retell: {str(e)}"
 
+    def _extract_tool_calls(self, data: Dict[str, Any], turns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        tool_calls_map = {}
+        transcript_with_tool_calls = data.get("transcript_with_tool_calls") or []
+        
+        current_time_sec = 0.0
+        turn_index = 0
+        
+        for item in transcript_with_tool_calls:
+            role = item.get("role")
+            if role in ("agent", "user"):
+                if turn_index < len(turns):
+                    t = turns[turn_index]
+                    current_time_sec = t.get("end_sec", current_time_sec)
+                    turn_index += 1
+            elif role == "tool_call":
+                tc_id = item.get("tool_call_id") or item.get("id")
+                name = item.get("name") or item.get("function", {}).get("name")
+                args = item.get("arguments") or item.get("function", {}).get("arguments")
+                
+                tool_calls_map[tc_id] = {
+                    "id": tc_id,
+                    "name": name,
+                    "arguments": args,
+                    "start_time_sec": current_time_sec,
+                    "latency_ms": None,
+                    "result": None,
+                    "error": None
+                }
+            elif role == "tool_result":
+                tc_id = item.get("tool_call_id") or item.get("id")
+                content = item.get("content") or item.get("result")
+                if tc_id in tool_calls_map:
+                    tool_calls_map[tc_id]["result"] = content
+        
+        latency_info = data.get("latency") or {}
+        if isinstance(latency_info, dict):
+            tc_latencies = latency_info.get("tool_calls") or []
+            if isinstance(tc_latencies, list):
+                for idx, tcl in enumerate(tc_latencies):
+                    if not isinstance(tcl, dict):
+                        continue
+                    name = tcl.get("name")
+                    lat_sec = tcl.get("latency") or tcl.get("duration")
+                    matched = False
+                    if lat_sec is not None:
+                        lat_ms = int(lat_sec * 1000) if lat_sec < 100 else int(lat_sec)
+                        for tc in tool_calls_map.values():
+                            if tc["name"] == name and tc["latency_ms"] is None:
+                                tc["latency_ms"] = lat_ms
+                                matched = True
+                                break
+                        if not matched:
+                            new_id = f"tool_lat_{idx}"
+                            tool_calls_map[new_id] = {
+                                "id": new_id,
+                                "name": name,
+                                "arguments": None,
+                                "start_time_sec": None,
+                                "latency_ms": lat_ms,
+                                "result": None,
+                                "error": None
+                            }
+        
+        result_list = list(tool_calls_map.values())
+        result_list.sort(key=lambda x: x["start_time_sec"] or 0.0)
+        return result_list
+
     def get_call(self, call_id: str) -> Dict[str, Any]:
         if self.api_key == "mock" or call_id.startswith("mock_"):
             return self._get_mock_data(call_id)
@@ -69,9 +136,14 @@ class RetellConnector(BaseConnector):
         cost = None
         call_cost = data.get("call_cost")
         if isinstance(call_cost, (int, float)):
-            cost = float(call_cost)
+            cost = float(call_cost) / 100.0
         elif isinstance(call_cost, dict):
-            cost = float(call_cost.get("product_costs", [{}])[0].get("cost", 0.0) if call_cost.get("product_costs") else 0.0)
+            combined = call_cost.get("combined_cost")
+            if isinstance(combined, (int, float)):
+                cost = float(combined) / 100.0
+            else:
+                product_costs = call_cost.get("product_costs") or []
+                cost = sum(float(item.get("cost", 0.0)) for item in product_costs) / 100.0 if product_costs else 0.0
             
         transcript = data.get("transcript") or ""
         
@@ -105,6 +177,8 @@ class RetellConnector(BaseConnector):
                 "text": text
             })
             
+        tool_calls = self._extract_tool_calls(data, turns)
+            
         return {
             "external_id": call_id,
             "agent_id": agent_id,
@@ -116,6 +190,7 @@ class RetellConnector(BaseConnector):
             "cost": cost,
             "transcript": transcript,
             "turns": turns,
+            "tool_calls": tool_calls,
             "metadata": data
         }
 
@@ -165,7 +240,17 @@ class RetellConnector(BaseConnector):
                 dur = int(dur_ms / 1000) if dur_ms else int(call.get("duration", 0))
 
                 cost_val = call.get("call_cost")
-                cost = float(cost_val) if isinstance(cost_val, (int, float)) else None
+                if isinstance(cost_val, (int, float)):
+                    cost = float(cost_val) / 100.0
+                elif isinstance(cost_val, dict):
+                    combined = cost_val.get("combined_cost")
+                    if isinstance(combined, (int, float)):
+                        cost = float(combined) / 100.0
+                    else:
+                        product_costs = cost_val.get("product_costs") or []
+                        cost = sum(float(item.get("cost", 0.0)) for item in product_costs) / 100.0 if product_costs else 0.0
+                else:
+                    cost = None
 
                 calls_list.append({
                     "external_id": cid,
@@ -211,6 +296,56 @@ class RetellConnector(BaseConnector):
 
     def _get_mock_data(self, call_id: str) -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
+        mock_meta = {
+            "call_id": call_id,
+            "status": "completed",
+            "mocked": True,
+            "transcript_with_tool_calls": [
+                {
+                    "role": "agent",
+                    "content": "Hello! Thank you for calling Retell AI support center. My name is Alex. How can I assist you today?"
+                },
+                {
+                    "role": "user",
+                    "content": "Hello, I am testing the Retell connector integration."
+                },
+                {
+                    "role": "tool_call",
+                    "tool_call_id": "call_retell_mock_1",
+                    "name": "lookup_user_account",
+                    "arguments": "{\"user_email\": \"test@example.com\"}"
+                },
+                {
+                    "role": "tool_result",
+                    "tool_call_id": "call_retell_mock_1",
+                    "name": "lookup_user_account",
+                    "content": "{\"status\": \"premium\", \"account_id\": \"retell_987\"}"
+                }
+            ],
+            "latency": {
+                "tool_calls": [
+                    {
+                        "name": "lookup_user_account",
+                        "latency": 1.450
+                    }
+                ]
+            }
+        }
+        turns = [
+            {
+                "speaker": "agent",
+                "start_sec": 1.0,
+                "end_sec": 5.5,
+                "text": "Hello! Thank you for calling Retell AI support center. My name is Alex. How can I assist you today?"
+            },
+            {
+                "speaker": "user",
+                "start_sec": 6.2,
+                "end_sec": 12.0,
+                "text": "Hello, I am testing the Retell connector integration."
+            }
+        ]
+        tool_calls = self._extract_tool_calls(mock_meta, turns)
         return {
             "external_id": call_id,
             "agent_id": "agent_retell_01",
@@ -221,25 +356,9 @@ class RetellConnector(BaseConnector):
             "ended_at": now,
             "cost": 0.0550,
             "transcript": "Agent: Hello! Thank you for calling Retell AI support center.",
-            "turns": [
-                {
-                    "speaker": "agent",
-                    "start_sec": 1.0,
-                    "end_sec": 5.5,
-                    "text": "Hello! Thank you for calling Retell AI support center. My name is Alex. How can I assist you today?"
-                },
-                {
-                    "speaker": "user",
-                    "start_sec": 6.2,
-                    "end_sec": 12.0,
-                    "text": "Hello, I am testing the Retell connector integration."
-                }
-            ],
-            "metadata": {
-                "call_id": call_id,
-                "status": "completed",
-                "mocked": True
-            }
+            "turns": turns,
+            "tool_calls": tool_calls,
+            "metadata": mock_meta
         }
 
     def list_agents(self) -> List[Dict[str, Any]]:
