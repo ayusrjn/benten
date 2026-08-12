@@ -1,41 +1,31 @@
-import React, { useState, useEffect } from "react";
-import { Steps, Card, Form, Input, Button, Table, Select, Typography, Layout, Divider, message } from "antd";
+import React, { useState, useEffect, useContext } from "react";
+import { Card, Input, Button, Typography, Layout, Divider, message, Space, Tooltip } from "antd";
 import { API_URL, TOKEN_KEY } from "../../providers/constants";
 import { Logo } from "../../components";
+import { ColorModeContext } from "../../contexts/color-mode";
 import {
   ProjectOutlined,
-  UsergroupAddOutlined,
-  CheckCircleOutlined,
   PlusOutlined,
-  DeleteOutlined,
   ArrowRightOutlined,
-  ArrowLeftOutlined
+  DeleteOutlined,
+  SunOutlined,
+  MoonOutlined
 } from "@ant-design/icons";
 
 const { Title, Text, Paragraph } = Typography;
-const { Option } = Select;
 
 interface Project {
   id: string;
   name: string;
 }
 
-interface TeamMember {
-  email: string;
-  role: string;
-}
-
 export const OnboardingPage: React.FC = () => {
-  const [currentStep, setCurrentStep] = useState(0);
+  const { mode, setMode } = useContext(ColorModeContext);
   const [loading, setLoading] = useState(false);
-
-  // Step 1 State: Projects
+  const [btnLoading, setBtnLoading] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [newProjectName, setNewProjectName] = useState("");
-
-  // Step 2 State: Team Members
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [memberForm] = Form.useForm();
+  const isDark = mode === "dark";
 
   const getHeaders = () => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -63,7 +53,7 @@ export const OnboardingPage: React.FC = () => {
     fetchProjects();
   }, []);
 
-  // Step 1 actions: Create Project
+  // Create Project
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) {
       message.warning("Please enter a project name");
@@ -82,7 +72,7 @@ export const OnboardingPage: React.FC = () => {
         setNewProjectName("");
         message.success(`Project "${newProj.name}" created!`);
       } else {
-        const errData = await res.json();
+        const errData = await res.json().catch(() => ({}));
         message.error(errData.detail || "Failed to create project");
       }
     } catch (err) {
@@ -92,255 +82,325 @@ export const OnboardingPage: React.FC = () => {
     }
   };
 
-  // Step 2 actions: Add coworker to list
-  const handleAddCoworker = (values: any) => {
-    if (teamMembers.some((m) => m.email === values.email)) {
-      message.warning("This email is already in invitation list");
+  // Delete Project
+  const handleDeleteProject = async (id: string, name: string) => {
+    try {
+      const res = await fetch(`${API_URL}/projects/${id}`, {
+        method: "DELETE",
+        headers: getHeaders(),
+      });
+      if (res.ok) {
+        setProjects(projects.filter((p) => p.id !== id));
+        message.success(`Project "${name}" removed`);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        message.error(errData.detail || "Failed to delete project");
+      }
+    } catch (err) {
+      message.error("Failed to delete project");
+    }
+  };
+
+  // Finish Onboarding
+  const handleFinishOnboarding = async () => {
+    if (projects.length === 0) {
+      message.error("Please create at least one project workspace to proceed");
       return;
     }
-    setTeamMembers([...teamMembers, { email: values.email, role: values.role }]);
-    memberForm.resetFields(["email"]);
-  };
-
-  const handleRemoveCoworker = (email: string) => {
-    setTeamMembers(teamMembers.filter((m) => m.email !== email));
-  };
-
-  // Step 2 actions: Send invites to backend
-  const sendTeamInvites = async () => {
-    if (teamMembers.length === 0) return true;
+    setBtnLoading(true);
     try {
-      let allSuccess = true;
-      for (const m of teamMembers) {
-        const res = await fetch(`${API_URL}/organization/members`, {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify({
-            email: m.email,
-            role: m.role,
-          }),
-        });
-        if (!res.ok) {
-          allSuccess = false;
-          const errData = await res.json();
-          message.error(`Failed to invite ${m.email}: ${errData.detail || "Error"}`);
-        }
-      }
-      return allSuccess;
-    } catch (err) {
-      message.error("Error occurred while sending invitations");
-      return false;
-    }
-  };
-
-  const handleFinishOnboarding = async () => {
-    setLoading(true);
-    try {
-      // 1. Send coworker invitations
-      const invitesSent = await sendTeamInvites();
-      if (!invitesSent && teamMembers.length > 0) {
-        setLoading(false);
-        return; // Don't finalize if we failed to save team invites
-      }
-
-      // 2. Mark onboarding as complete in API
       const res = await fetch(`${API_URL}/auth/onboarding/complete`, {
         method: "POST",
         headers: getHeaders(),
       });
       if (res.ok) {
-        message.success("Onboarding complete! Welcome to Benten.");
-        // Redirect to dashboard with reload to load fresh layouts
+        message.success("Setup complete! Welcome to Benten.");
         window.location.href = "/dashboard";
       } else {
-        const errData = await res.json();
+        const errData = await res.json().catch(() => ({}));
         message.error(errData.detail || "Failed to mark onboarding as completed");
       }
     } catch (err) {
       message.error("Failed to complete onboarding");
     } finally {
-      setLoading(false);
+      setBtnLoading(false);
     }
   };
 
-  const stepsList = [
-    {
-      title: "Projects",
-      icon: <ProjectOutlined />,
-      description: "Set up workspaces",
-    },
-    {
-      title: "Team Members",
-      icon: <UsergroupAddOutlined />,
-      description: "Invite your coworkers",
-    },
-  ];
-
   return (
-    <Layout style={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", background: "#f0f2f5", padding: "40px 20px" }}>
-      <div style={{ width: "100%", maxWidth: "900px" }}>
+    <Layout
+      style={{
+        minHeight: "100vh",
+        position: "relative",
+        background: isDark
+          ? "linear-gradient(135deg, #0e111d 0%, #080a10 50%, #150f28 100%)"
+          : "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e0e7ff 100%)",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: "40px 20px",
+        overflow: "hidden",
+        transition: "background 0.5s ease"
+      }}
+    >
+      {/* Dynamic top bar menu switch */}
+      <div style={{ position: "absolute", top: "24px", right: "24px", zIndex: 20 }}>
+        <Tooltip title={`Switch to ${isDark ? "Light" : "Dark"} Mode`}>
+          <Button
+            type="text"
+            onClick={() => setMode(isDark ? "light" : "dark")}
+            icon={isDark ? <SunOutlined style={{ color: "#faad14" }} /> : <MoonOutlined style={{ color: "#4f46e5" }} />}
+            style={{ fontSize: "16px", color: isDark ? "rgba(255,255,255,0.8)" : "#0f172a" }}
+          />
+        </Tooltip>
+      </div>
+
+      {/* Glow Effects */}
+      <div
+        style={{
+          position: "absolute",
+          width: "600px",
+          height: "600px",
+          background: isDark
+            ? "radial-gradient(circle, rgba(124, 58, 237, 0.15) 0%, rgba(0,0,0,0) 70%)"
+            : "radial-gradient(circle, rgba(165, 180, 252, 0.4) 0%, rgba(0,0,0,0) 70%)",
+          top: "-10%",
+          left: "-10%",
+          borderRadius: "50%",
+          filter: "blur(60px)",
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          width: "600px",
+          height: "600px",
+          background: isDark
+            ? "radial-gradient(circle, rgba(236, 72, 153, 0.08) 0%, rgba(0,0,0,0) 70%)"
+            : "radial-gradient(circle, rgba(251, 207, 232, 0.3) 0%, rgba(0,0,0,0) 70%)",
+          bottom: "-10%",
+          right: "-10%",
+          borderRadius: "50%",
+          filter: "blur(60px)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <style>{`
+        @keyframes fadeUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
         
-        <div style={{ textAlign: "center", marginBottom: "40px" }}>
-          <Logo size={46} rounded />
-          <Title level={2} style={{ marginTop: "16px" }}>Benten Guided Setup</Title>
-          <Paragraph type="secondary" style={{ fontSize: "16px" }}>
-            Let's get your workspace completely configured so you can start evaluating voice agents.
+        .onboarding-card {
+          animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          background: ${isDark ? "rgba(255, 255, 255, 0.02)" : "rgba(255, 255, 255, 0.75)"} !important;
+          backdrop-filter: blur(20px);
+          border: 1px solid ${isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)"} !important;
+          box-shadow: ${isDark ? "0 25px 50px -12px rgba(0, 0, 0, 0.5)" : "0 20px 40px -10px rgba(0, 0, 0, 0.05)"} !important;
+          border-radius: 20px !important;
+          padding: 24px;
+        }
+
+        .project-item {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          background: ${isDark ? "rgba(255, 255, 255, 0.02)" : "rgba(255, 255, 255, 0.9)"} !important;
+          border: 1px solid ${isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)"} !important;
+          border-radius: 12px !important;
+        }
+
+        .project-item:hover {
+          transform: translateY(-2px);
+          background: ${isDark ? "rgba(255, 255, 255, 0.04)" : "rgba(255, 255, 255, 0.98)"} !important;
+          border-color: rgba(124, 58, 237, 0.3) !important;
+          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .custom-input {
+          background: ${isDark ? "rgba(255, 255, 255, 0.03)" : "rgba(0, 0, 0, 0.01)"} !important;
+          border: 1px solid ${isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.12)"} !important;
+          color: ${isDark ? "#fff" : "#0f172a"} !important;
+          transition: all 0.3s ease !important;
+        }
+
+        .custom-input:focus {
+          border-color: #7c3aed !important;
+          box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2) !important;
+          background: ${isDark ? "rgba(255, 255, 255, 0.05)" : "#fff"} !important;
+        }
+
+        .custom-input::placeholder {
+          color: ${isDark ? "rgba(255, 255, 255, 0.35)" : "rgba(15, 23, 42, 0.4)"} !important;
+        }
+
+        .gradient-btn {
+          background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%) !important;
+          border: none !important;
+          color: white !important;
+          transition: all 0.3s ease !important;
+        }
+
+        .gradient-btn:hover:not(:disabled) {
+          filter: brightness(1.1);
+          box-shadow: 0 0 15px rgba(124, 58, 237, 0.4) !important;
+          transform: translateY(-1px);
+        }
+
+        .gradient-btn:disabled {
+          background: ${isDark ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.04)"} !important;
+          color: ${isDark ? "rgba(255, 255, 255, 0.25)" : "rgba(0, 0, 0, 0.3)"} !important;
+          border: 1px solid ${isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)"} !important;
+        }
+
+        .action-icon {
+          color: ${isDark ? "rgba(255, 255, 255, 0.4)" : "rgba(0, 0, 0, 0.4)"};
+          transition: color 0.2s ease;
+        }
+
+        .action-icon:hover {
+          color: #ff4d4f;
+        }
+      `}</style>
+
+      <div style={{ width: "100%", maxWidth: "680px", zIndex: 10 }}>
+        
+        {/* Title Header */}
+        <div style={{ textAlign: "center", marginBottom: "32px", animation: "fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards" }}>
+          <Logo size={52} rounded />
+          <Title
+            level={2}
+            style={{
+              marginTop: "20px",
+              marginBottom: "8px",
+              background: isDark
+                ? "linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%)"
+                : "linear-gradient(135deg, #53457a 0%, #1e1b4b 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              fontWeight: 700,
+              letterSpacing: "-0.5px"
+            }}
+          >
+            Create Your Workspace
+          </Title>
+          <Paragraph style={{ color: isDark ? "rgba(255, 255, 255, 0.45)" : "#5c6f84", fontSize: "15px", margin: 0 }}>
+            Projects organize your voice agents, call analytics, and incident reports under separate spaces. Create at least one project to get started.
           </Paragraph>
         </div>
 
-        <Steps
-          current={currentStep}
-          items={stepsList}
-          style={{ marginBottom: "40px" }}
-        />
+        {/* Setup card */}
+        <Card bordered={false} className="onboarding-card">
+          <Title level={4} style={{ color: isDark ? "#fff" : "#0f172a", marginBottom: "4px", fontSize: "17px", fontWeight: 600 }}>
+            Project Workspaces
+          </Title>
+          <Paragraph style={{ color: isDark ? "rgba(255, 255, 255, 0.4)" : "#6b7280", fontSize: "13px", marginBottom: "20px" }}>
+            Add workspaces matching your business use-cases (e.g. "Customer Support Bots", "Sales Agents").
+          </Paragraph>
 
-        {/* STEP 1: Projects */}
-        {currentStep === 0 && (
-          <Card bordered={false} style={{ boxShadow: "0 4px 12px rgba(0,0,0,0.05)", borderRadius: "12px", padding: "16px" }}>
-            <Title level={4}>Create a Project workspace</Title>
-            <Paragraph type="secondary">
-              Projects align your voice agents, call logs, and performance metrics under distinct categories.
-            </Paragraph>
-
-            <div style={{ display: "flex", gap: "12px", marginBottom: "24px" }}>
-              <Input
-                placeholder="e.g. Sales Agents, Support Bots"
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                size="large"
-                style={{ maxWidth: "400px" }}
-              />
-              <Button type="primary" size="large" onClick={handleCreateProject} loading={loading} icon={<PlusOutlined />}>
-                Create Project
-              </Button>
-            </div>
-
-            <Divider />
-
-            {projects.length > 0 && (
-              <div style={{ marginBottom: "24px" }}>
-                <Title level={5} style={{ marginBottom: "16px" }}>Your Project Workspaces</Title>
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  {projects.map((project) => (
-                    <Card
-                      key={project.id}
-                      size="small"
-                      style={{ borderRadius: "8px", border: "1px solid #e8e8e8", display: "flex", alignItems: "center" }}
-                      styles={{ body: { width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px" } }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <ProjectOutlined style={{ fontSize: "18px", color: "#1890ff" }} />
-                        <Text strong style={{ fontSize: "15px" }}>{project.name}</Text>
-                      </div>
-                      <Text type="secondary" style={{ fontSize: "12px" }}>Workspace Ready</Text>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
-              <Button type="primary" size="large" onClick={() => setCurrentStep(1)} disabled={projects.length === 0} icon={<ArrowRightOutlined />}>
-                Continue to Team Invites
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {/* STEP 2: Team Members */}
-        {currentStep === 1 && (
-          <Card bordered={false} style={{ boxShadow: "0 4px 12px rgba(0,0,0,0.05)", borderRadius: "12px", padding: "16px" }}>
-            <Title level={4}>Invite Team Members</Title>
-            <Paragraph type="secondary">
-              Add your coworkers so they can collaborate on checking call metrics and agent dashboards.
-            </Paragraph>
-
-            <Form
-              form={memberForm}
-              layout="vertical"
-              onFinish={handleAddCoworker}
-              initialValues={{ role: "Viewer" }}
-              style={{ maxWidth: "600px", marginBottom: "24px" }}
+          {/* Form Area */}
+          <div style={{ display: "flex", gap: "12px", marginBottom: "28px" }}>
+            <Input
+              placeholder="e.g. Support & QA Agents"
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              onPressEnter={handleCreateProject}
+              size="large"
+              className="custom-input"
+              style={{ flex: 1, borderRadius: "10px" }}
+              disabled={loading}
+            />
+            <Button
+              type="primary"
+              size="large"
+              onClick={handleCreateProject}
+              loading={loading}
+              icon={<PlusOutlined />}
+              style={{
+                borderRadius: "10px",
+                height: "40px",
+                background: "#7c3aed",
+                borderColor: "#7c3aed",
+                fontWeight: 500
+              }}
             >
-              <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
-                <Form.Item
-                  name="email"
-                  label="Coworker Email"
-                  rules={[
-                    { required: true, message: "Please input email!" },
-                    { type: "email", message: "Please input valid email!" }
-                  ]}
-                  style={{ flex: 1, marginBottom: 0 }}
-                >
-                  <Input placeholder="coworker@company.com" size="large" />
-                </Form.Item>
+              Create
+            </Button>
+          </div>
 
-                <Form.Item
-                  name="role"
-                  label="Role"
-                  style={{ width: "135px", marginBottom: 0 }}
-                >
-                  <Select size="large">
-                    <Option value="Admin">Admin</Option>
-                    <Option value="Viewer">Viewer</Option>
-                  </Select>
-                </Form.Item>
-
-                <Button type="primary" htmlType="submit" size="large" icon={<PlusOutlined />}>
-                  Add
-                </Button>
+          {/* Project List */}
+          {projects.length > 0 && (
+            <div style={{ marginBottom: "28px" }}>
+              <Divider style={{ borderColor: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)", margin: "0 0 20px 0" }} />
+              <Title level={5} style={{ color: isDark ? "rgba(255, 255, 255, 0.6)" : "#65597a", fontSize: "13px", fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: "12px" }}>
+                Active Workspaces ({projects.length})
+              </Title>
+              
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {projects.map((project) => (
+                  <Card
+                    key={project.id}
+                    size="small"
+                    className="project-item"
+                    styles={{ body: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px" } }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <ProjectOutlined style={{ fontSize: "18px", color: "#a78bfa" }} />
+                      <Text style={{ color: isDark ? "#fff" : "#0f172a", fontSize: "14px", fontWeight: 500 }}>
+                        {project.name}
+                      </Text>
+                    </div>
+                    
+                    <Space size={16}>
+                      <span style={{ fontSize: "11px", color: isDark ? "rgba(255, 255, 255, 0.35)" : "rgba(0, 0, 0, 0.35)", fontWeight: 500 }}>
+                        Ready
+                      </span>
+                      <Tooltip title="Delete Workspace">
+                        <Button
+                          type="text"
+                          icon={<DeleteOutlined className="action-icon" />}
+                          onClick={() => handleDeleteProject(project.id, project.name)}
+                          style={{ padding: 4, height: "auto" }}
+                        />
+                      </Tooltip>
+                    </Space>
+                  </Card>
+                ))}
               </div>
-            </Form>
-
-            <Divider />
-
-            {teamMembers.length > 0 ? (
-              <Table
-                dataSource={teamMembers}
-                rowKey="email"
-                pagination={false}
-                style={{ marginBottom: "24px" }}
-                columns={[
-                  {
-                    title: "Email",
-                    dataIndex: "email",
-                    key: "email",
-                  },
-                  {
-                    title: "Workspace Role",
-                    dataIndex: "role",
-                    key: "role",
-                  },
-                  {
-                    title: "Action",
-                    key: "action",
-                    render: (_, record) => (
-                      <Button
-                        type="text"
-                        danger
-                        icon={<DeleteOutlined />}
-                        onClick={() => handleRemoveCoworker(record.email)}
-                      />
-                    ),
-                  },
-                ]}
-              />
-            ) : (
-              <Paragraph style={{ textAlign: "center", padding: "20px 0" }} type="secondary">
-                No invitations added yet. You can invite team members later from organization settings if preferred.
-              </Paragraph>
-            )}
-
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "24px" }}>
-              <Button size="large" onClick={() => setCurrentStep(0)} icon={<ArrowLeftOutlined />} disabled={loading}>
-                Back
-              </Button>
-              <Button type="primary" size="large" onClick={handleFinishOnboarding} loading={loading} icon={<CheckCircleOutlined />}>
-                Finish Setup & Complete
-              </Button>
             </div>
-          </Card>
-        )}
+          )}
+
+          <Divider style={{ borderColor: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)", margin: "24px 0" }} />
+
+          {/* Finish Actions */}
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <Button
+              type="primary"
+              size="large"
+              onClick={handleFinishOnboarding}
+              loading={btnLoading}
+              disabled={projects.length === 0}
+              className="gradient-btn"
+              style={{
+                borderRadius: "10px",
+                height: "44px",
+                padding: "0 28px",
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                gap: "8px"
+              }}
+            >
+              Start Evaluating Agents <ArrowRightOutlined />
+            </Button>
+          </div>
+        </Card>
 
       </div>
     </Layout>

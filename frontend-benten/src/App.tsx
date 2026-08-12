@@ -37,6 +37,7 @@ import { AgentsPage } from "./pages/agents";
 import { CallsPage } from "./pages/calls";
 import { authProvider } from "./providers/auth";
 import { OnboardingPage } from "./pages/onboarding";
+import { LandingPage } from "./pages/landing";
 
 import {
   DashboardOutlined,
@@ -112,6 +113,7 @@ function App() {
                 }}
               >
                 <Routes>
+                  <Route path="/" element={<LandingPage />} />
                   <Route
                     element={
                       <Authenticated
@@ -139,10 +141,6 @@ function App() {
                         </ThemedLayout>
                       }
                     >
-                      <Route
-                        index
-                        element={<NavigateToResource resource="dashboard" />}
-                      />
                       <Route path="/dashboard" element={<Dashboard />} />
                       <Route path="/calls" element={<CallsPage />} />
                       <Route path="/calls/:id" element={<CallsPage />} />
