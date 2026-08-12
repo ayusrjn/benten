@@ -19,6 +19,7 @@ import {
   Progress,
   Tabs,
   notification,
+  theme,
 } from "antd";
 import {
   RobotOutlined,
@@ -65,6 +66,7 @@ const PROVIDER_COLORS: Record<string, { bg: string; text: string; border: string
 };
 
 export const AgentsPage: React.FC = () => {
+  const { token } = theme.useToken();
   const navigate = useNavigate();
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -291,15 +293,16 @@ export const AgentsPage: React.FC = () => {
             bordered={false}
             style={{
               borderRadius: "12px",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-              background: "#ffffff",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              background: token.colorBgContainer,
+              border: `1px solid ${token.colorBorderSecondary}`,
             }}
           >
             <Statistic
               title={<Text type="secondary">Total Active Agents</Text>}
               value={totalAgents}
               prefix={<RobotOutlined style={{ color: "#1890ff", marginRight: 8 }} />}
-              valueStyle={{ fontWeight: 700, color: "#1f2937" }}
+              valueStyle={{ fontWeight: 700, color: token.colorText }}
             />
             <div style={{ marginTop: 8 }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -314,8 +317,9 @@ export const AgentsPage: React.FC = () => {
             bordered={false}
             style={{
               borderRadius: "12px",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-              background: "#ffffff",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              background: token.colorBgContainer,
+              border: `1px solid ${token.colorBorderSecondary}`,
             }}
           >
             <Statistic
@@ -341,8 +345,9 @@ export const AgentsPage: React.FC = () => {
             bordered={false}
             style={{
               borderRadius: "12px",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-              background: "#ffffff",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              background: token.colorBgContainer,
+              border: `1px solid ${token.colorBorderSecondary}`,
             }}
           >
             <Statistic
@@ -368,8 +373,9 @@ export const AgentsPage: React.FC = () => {
             bordered={false}
             style={{
               borderRadius: "12px",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-              background: "#ffffff",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              background: token.colorBgContainer,
+              border: `1px solid ${token.colorBorderSecondary}`,
             }}
           >
             <Statistic
@@ -393,7 +399,9 @@ export const AgentsPage: React.FC = () => {
         style={{
           borderRadius: "12px",
           marginBottom: "24px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+          background: token.colorBgContainer,
+          border: `1px solid ${token.colorBorderSecondary}`,
         }}
       >
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
@@ -424,7 +432,7 @@ export const AgentsPage: React.FC = () => {
                 ]}
                 value={selectedProvider}
                 onChange={(val) => setSelectedProvider(val as string)}
-                style={{ background: "#f3f4f6", padding: 4 }}
+                style={{ background: token.colorBgLayout, padding: 4 }}
               />
             </Space>
           </Col>
@@ -499,8 +507,9 @@ export const AgentsPage: React.FC = () => {
                   hoverable
                   style={{
                     borderRadius: "12px",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
-                    border: "1px solid #f0f0f0",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    background: token.colorBgContainer,
                     height: "100%",
                     display: "flex",
                     flexDirection: "column",
@@ -562,7 +571,7 @@ export const AgentsPage: React.FC = () => {
 
                   {/* Agent Title & Description */}
                   <div style={{ marginBottom: "16px" }}>
-                    <Title level={4} style={{ margin: "0 0 4px 0", fontSize: 17, color: "#111827" }}>
+                    <Title level={4} style={{ margin: "0 0 4px 0", fontSize: 17, color: token.colorText }}>
                       {agent.name}
                     </Title>
 
@@ -591,14 +600,14 @@ export const AgentsPage: React.FC = () => {
                     )}
                   </div>
 
-                  <Divider style={{ margin: "12px 0" }} />
+                  <Divider style={{ margin: "12px 0", borderColor: token.colorBorderSecondary }} />
 
                   {/* Metrics Row */}
                   <Row gutter={12} style={{ marginBottom: "16px" }}>
                     <Col span={8}>
                       <div
                         style={{
-                          background: "#f9fafb",
+                          background: token.colorBgLayout,
                           padding: "8px 10px",
                           borderRadius: "8px",
                           textAlign: "center",
@@ -607,7 +616,7 @@ export const AgentsPage: React.FC = () => {
                         <Text type="secondary" style={{ fontSize: 11, display: "block" }}>
                           Calls
                         </Text>
-                        <Text strong style={{ fontSize: 15, color: "#1f2937" }}>
+                        <Text strong style={{ fontSize: 15, color: token.colorText }}>
                           {agent.conversationsCount}
                         </Text>
                       </div>
@@ -615,7 +624,7 @@ export const AgentsPage: React.FC = () => {
                     <Col span={8}>
                       <div
                         style={{
-                          background: "#f9fafb",
+                          background: token.colorBgLayout,
                           padding: "8px 10px",
                           borderRadius: "8px",
                           textAlign: "center",
@@ -632,7 +641,7 @@ export const AgentsPage: React.FC = () => {
                     <Col span={8}>
                       <div
                         style={{
-                          background: "#f9fafb",
+                          background: token.colorBgLayout,
                           padding: "8px 10px",
                           borderRadius: "8px",
                           textAlign: "center",
@@ -660,7 +669,7 @@ export const AgentsPage: React.FC = () => {
                     ) : agent.topProblems && agent.topProblems.length > 0 ? (
                       <Space direction="vertical" size={4} style={{ width: "100%" }}>
                         {agent.topProblems.slice(0, 2).map((prob, idx) => (
-                          <Tag
+                           <Tag
                             key={idx}
                             color="volcano"
                             style={{
@@ -690,7 +699,7 @@ export const AgentsPage: React.FC = () => {
                       justifyContent: "space-between",
                       alignItems: "center",
                       paddingTop: "12px",
-                      borderTop: "1px solid #f0f0f0",
+                      borderTop: `1px solid ${token.colorBorderSecondary}`,
                     }}
                   >
                     <Text type="secondary" style={{ fontSize: 11 }}>
@@ -766,7 +775,7 @@ export const AgentsPage: React.FC = () => {
                   label: "Overview & Analytics",
                   children: (
                     <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                      <Card size="small" style={{ background: "#fafafa", borderRadius: 8 }}>
+                      <Card size="small" style={{ background: token.colorBgLayout, borderRadius: 8, borderColor: token.colorBorderSecondary }}>
                         <Title level={5} style={{ margin: "0 0 8px 0" }}>
                           Internal Metadata
                         </Title>
