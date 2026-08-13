@@ -55,6 +55,8 @@ def _compute_trends_and_problems(convs: list) -> Dict[str, Any]:
 class AgentService:
     @staticmethod
     def get_agent_metrics(db: Session, agent_id: uuid.UUID) -> dict:
+        # Normalize to uuid.UUID to prevent SQLite dialect mismatch
+        agent_id = uuid.UUID(str(agent_id))
         convs = db.query(Conversation).filter(
             Conversation.agent_id == agent_id,
             Conversation.status == "Completed"
