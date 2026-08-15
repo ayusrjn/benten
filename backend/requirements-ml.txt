@@ -1,0 +1,7 @@
+# Optional Deep ML & Advanced Offline Diarization Extensions
+# Install these only if you require offline mono diarization without provider webhooks:
+# pip install -r requirements-ml.txt
+
+pyannote.audio>=4.0.1
+transformers>=4.30.0
+torchmetrics[audio]>=1.0.0

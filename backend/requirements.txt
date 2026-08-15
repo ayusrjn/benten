@@ -16,23 +16,20 @@ sqlalchemy>=2.0.0
 alembic>=1.11.0
 psycopg2-binary>=2.9.6
 
-# Task Queue
+# Task Queue & Caching
 celery>=5.3.0
 redis>=4.6.0
 
-# Audio Analysis & ML Scaffolding
+# Audio Processing & VAD
 numpy>=1.24.0
-pydub>=0.25.1
-soundfile>=0.12.1
-torch>=2.0.0
-onnxruntime>=1.15.0
-requests>=2.31.0
-torchaudio>=2.0.0
-pyannote.audio>=4.0.1
-transformers>=4.30.0
 pyloudnorm>=0.1.1
-torchmetrics[audio]>=1.0.0
-librosa>=0.10.0
+requests>=2.31.0
+onnxruntime>=1.15.0
+
+# PyTorch (CPU Wheels for lightweight, rapid installation without heavy CUDA bloat)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+torchaudio>=2.0.0
 
 # Testing
 pytest>=7.4.0

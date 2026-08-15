@@ -154,9 +154,19 @@ Run the orchestrator script to start all backing services, backend API, Celery w
 
 Press `Ctrl+C` to stop all services simultaneously.
 
+### 2. Reset & Fresh Start
+
+To wipe all Docker volumes (database, Redis, RabbitMQ), delete virtual environments and caches, and restart from scratch:
+
+```bash
+./fresh_start.sh
+```
+
+*(Tip: Pass `./fresh_start.sh --clean-only` to clean without restarting).*
+
 ---
 
-### 2. Manual Setup
+### 3. Manual Setup
 
 #### Step 1: Start Backing Infrastructure
 ```bash

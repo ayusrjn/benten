@@ -32,6 +32,18 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_organizations_id'), 'organizations', ['id'], unique=False)
+
+    op.create_table('users',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('email', sa.String(length=255), nullable=False),
+    sa.Column('hashed_password', sa.String(length=255), nullable=False),
+    sa.Column('full_name', sa.String(length=255), nullable=True),
+    sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
+    op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
+
     op.create_table('members',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('organization_id', sa.UUID(), nullable=False),
@@ -212,6 +224,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_members_id'), table_name='members')
     op.drop_table('members')
     
+    op.drop_index(op.f('ix_users_email'), table_name='users')
+    op.drop_index(op.f('ix_users_id'), table_name='users')
+    op.drop_table('users')
+
     op.drop_index(op.f('ix_organizations_id'), table_name='organizations')
     op.drop_table('organizations')
     # ### end Alembic commands ###
