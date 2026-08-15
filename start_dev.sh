@@ -13,7 +13,11 @@ if [ ! -f backend/.env ]; then
     echo " 2. Creating backend/.env from .env.example..."
     cp backend/.env.example backend/.env
     # Adjust hostnames to localhost for running backend natively on host machine
-    if [ "$(uname)" = "Darwin" ] || [ "$(expr substr $(uname -s) 1 5)" = "Linux" ]; then
+    if [ "$(uname)" = "Darwin" ]; then
+        sed -i '' 's/POSTGRES_HOST=postgres/POSTGRES_HOST=localhost/g' backend/.env
+        sed -i '' 's/RABBITMQ_HOST=rabbitmq/RABBITMQ_HOST=localhost/g' backend/.env
+        sed -i '' 's/REDIS_HOST=redis/REDIS_HOST=localhost/g' backend/.env
+    else
         sed -i 's/POSTGRES_HOST=postgres/POSTGRES_HOST=localhost/g' backend/.env
         sed -i 's/RABBITMQ_HOST=rabbitmq/RABBITMQ_HOST=localhost/g' backend/.env
         sed -i 's/REDIS_HOST=redis/REDIS_HOST=localhost/g' backend/.env
@@ -31,6 +35,8 @@ source venv/bin/activate
 echo "Installing/updating Python requirements..."
 pip install --upgrade pip
 pip install -r requirements.txt
+echo "Running database schema migrations..."
+alembic upgrade head
 cd ..
 
 # Set up Frontend packages
@@ -48,7 +54,7 @@ echo "Press Ctrl+C to stop all services simultaneously."
 echo "============================================="
 
 # Ensure all background jobs are stopped when script is killed or exits
-trap 'echo -e "\nStopping all background tasks..."; kill $(jobs -p) 2>/dev/null; exit 0' INT TERM EXIT
+trap 'echo -e "\nStopping all background tasks..."; kill $(jobs -p) 2>/dev/null || true; exit 0' INT TERM EXIT
 
 # Start FastAPI backend
 cd backend
@@ -63,6 +69,8 @@ source venv/bin/activate
 # Prevent HuggingFace Hub from making HTTP requests for already-cached models
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
+# Prevent macOS Objective-C multithreading fork crash with PyTorch/Celery
+export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 celery -A app.workers.celery_app worker --loglevel=info --concurrency=2 --prefetch-multiplier=1 &
 CELERY_PID=$!
 cd ..
