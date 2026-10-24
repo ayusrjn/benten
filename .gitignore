@@ -73,3 +73,5 @@ ehthumbs.db
 # Private Plans
 docs/detailed_plan.md
 backend/app/scratch/
+
+/backend/benten_local.db

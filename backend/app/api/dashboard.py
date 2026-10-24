@@ -1,4 +1,5 @@
-from typing import List, Optional
+from typing import Optional
+from datetime import datetime, timedelta, timezone
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
@@ -50,11 +51,11 @@ def get_dashboard_metrics(
         Conversation.status == "Completed"
     ).first()
     
-    latency_avg = int(round(avg_stats[0])) if avg_stats and avg_stats[0] is not None else 410
-    dead_air_avg = float(round(avg_stats[1], 2)) if avg_stats and avg_stats[1] is not None else 3.2
-    interruptions_count = int(avg_stats[2]) if avg_stats and avg_stats[2] is not None else 187
-    voice_quality_avg = int(round(avg_stats[3])) if avg_stats and avg_stats[3] is not None else 92
-    avg_duration_sec = int(round(avg_stats[4])) if avg_stats and avg_stats[4] is not None else 222
+    latency_avg = int(round(avg_stats[0])) if avg_stats and avg_stats[0] is not None else None
+    dead_air_avg = float(round(avg_stats[1], 2)) if avg_stats and avg_stats[1] is not None else None
+    interruptions_count = int(avg_stats[2]) if avg_stats and avg_stats[2] is not None else 0
+    voice_quality_avg = int(round(avg_stats[3])) if avg_stats and avg_stats[3] is not None else None
+    avg_duration_sec = int(round(avg_stats[4])) if avg_stats and avg_stats[4] is not None else None
     
     # Latency trend over last 10 conversations
     last_10 = db.query(Conversation.latency_ms).filter(
@@ -65,13 +66,26 @@ def get_dashboard_metrics(
     latency_trend = [item[0] for item in last_10]
     latency_trend.reverse()
     
-    if not latency_trend:
-        # Default fallback sparkline data
-        latency_trend = [450, 430, 440, 410, 415, 395, 410, 420, 405, 410]
-        
-    # Volume trend fallback or mock values
-    volume_trend = [180, 220, 240, 210, 230, 195, 241, 260, 250, 270]
-    
+    # Seven UTC calendar days of actual ingested calls, including all statuses.
+    today = datetime.now(timezone.utc).date()
+    first_day = today - timedelta(days=6)
+    window_start = datetime.combine(first_day, datetime.min.time(), tzinfo=timezone.utc)
+    window_end = window_start + timedelta(days=7)
+    created_at = Conversation.created_at
+    if db.get_bind().dialect.name == "postgresql":
+        created_at = func.timezone("UTC", created_at)
+    day = func.date(created_at)
+    daily_counts = db.query(day, func.count(Conversation.id)).filter(
+        Conversation.project_id == active_project_id,
+        Conversation.created_at >= window_start,
+        Conversation.created_at < window_end,
+    ).group_by(day).all()
+    counts = {str(date): count for date, count in daily_counts}
+    volume_dates = [(first_day + timedelta(days=i)).isoformat() for i in range(7)]
+    volume_trend = [counts.get(date, 0) for date in volume_dates] if counts else []
+    if not counts:
+        volume_dates = []
+
     # Active alerts
     active_alerts_db = db.query(Alert).filter(
         Alert.project_id == active_project_id,
@@ -81,7 +95,6 @@ def get_dashboard_metrics(
     active_alerts = []
     for a in active_alerts_db:
         rule_metric = a.alert_rule.metric if a.alert_rule else "High Latency"
-        rule_threshold = a.alert_rule.threshold if a.alert_rule else "> 1.2s"
         
         agent_name = "Agent"
         if a.conversation and a.conversation.agent:
@@ -98,7 +111,7 @@ def get_dashboard_metrics(
         ))
         
     return DashboardMetricsResponse(
-        conversationsCount=total_convs or 2341, # Fallback to mock value if database is fresh and unseeded
+        conversationsCount=total_convs,
         latencyAvg=latency_avg,
         deadAirAvg=dead_air_avg,
         interruptionsCount=interruptions_count,
@@ -106,5 +119,6 @@ def get_dashboard_metrics(
         avgDurationSec=avg_duration_sec,
         latencyTrend=latency_trend,
         volumeTrend=volume_trend,
+        volumeDates=volume_dates,
         activeAlerts=active_alerts
     )

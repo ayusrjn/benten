@@ -15,11 +15,12 @@ class DashboardMetricsResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     conversationsCount: int
-    latencyAvg: int
-    deadAirAvg: float
+    latencyAvg: int | None
+    deadAirAvg: float | None
     interruptionsCount: int
-    voiceQualityAvg: int
-    avgDurationSec: int
+    voiceQualityAvg: int | None
+    avgDurationSec: int | None
     latencyTrend: List[int]
     volumeTrend: List[int]
+    volumeDates: List[str]
     activeAlerts: List[DashboardAlertResponse]
